@@ -1,9 +1,17 @@
 import os
-import numpy as np
-import netCDF4
-import matplotlib.pyplot as plt
 
-path = os.path.join('/home/shared/Data/OLCI/L2','S3A_OL_2_WFR____20160425T151510_20160425T151710_20210703T072556_0119_003_239______MAR_R_NT_003.SEN3','Oa01_reflectance.nc' )
-Dataset = netCDF4.Dataset(path)
+clouds_path = os.path.join('/home/shared/Data/cloud_masks')
 
-#TODO Actually load cloudless data and apply cloud masks to them
+def filter_masks_by_percentage(low_bound=0, high_bound=25):
+    files = os.listdir(clouds_path)
+    print("There are {} cloud masks in the directory".format(len(files)))
+    #Get all numpy files
+    files = [f for f in files if f.endswith('.npy')]
+    #Map files where the percent is above the lower bound
+    files = [f for f in files if int(f.split('PERCENT')[1].split('.')[0]) >= low_bound]
+    #Map files where the percent is below the upper bound
+    files = [f for f in files if int(f.split('PERCENT')[1].split('.')[0]) <= high_bound]
+    print("There are {} cloud masks between {} and {} percent".format(len(files), low_bound, high_bound))
+    return files
+
+

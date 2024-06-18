@@ -7,7 +7,7 @@
 import tensorflow as tf
 import numpy as np
 import matplotlib.pylab as plt
-from utils.gated_conv import GatedConv2D, GatedDeConv2D
+from gated_conv import GatedConv2D, GatedDeConv2D
 import keras
 
 
