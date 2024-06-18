@@ -23,9 +23,9 @@ class GatedConv2D(keras.Model):
 
 
 class GatedDeConv2D(keras.Model):
-    def __init__(self, scale, cn_out, ker_size, stride, dilation):
+    def __init__(self, scale, cn_out, ker_size, stride, dilation=1):
         super().__init__()
-        self.upsample = keras.layers.UpSampling2D(scale=scale, interpolation="Bilinear")
+        self.upsample =  keras.layers.UpSampling2D(size=(scale,scale))
         self.conv = GatedConv2D(cn_out, ker_size, stride, dilation)
 
     def call(self, input):

@@ -32,5 +32,5 @@ class GenModel(keras.Model):
             GatedDeConv2D(2, cn_num, 4, 1),
             GatedConv2D(cn_num, 3, 1),
             GatedConv2D(cn_num, 3, 1),
-            GatedConv2D(band_num, 3, 1,activation='none'),
+            GatedConv2D(band_num, 3, 1,activation=None),
         ])
