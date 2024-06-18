@@ -1,10 +1,12 @@
 import os
 import numpy as np
 
+"""
 clouds_path = os.path.join('/home/shared/Data/cloud_masks')
 sen3_path = os.path.join('/home/shared/Data/OLCI/GoM/')
+"""
 
-def filter_masks_by_percentage(low_bound=0, high_bound=25):
+def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25):
     """
         This function filters cloud masks by the percentage of cloud cover.
         It returns a list of files that are within the boundaries.
