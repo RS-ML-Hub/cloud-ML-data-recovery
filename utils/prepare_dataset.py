@@ -1,7 +1,6 @@
 import os
 import numpy as np
-
-
+import xarray as xr
 
 clouds_path = os.path.join('/home/shared/Data/cloud_masks')
 sen3_path = os.path.join('/home/shared/Data/OLCI/GoM/')
@@ -66,3 +65,10 @@ def fetch_cloud_masks(file_list):
 
 def mask_images(sen3_files, cloud_files):
     pass
+
+def open_olci(path):
+    arr = []
+    for i in range(1, 13):
+        x = xr.open_dataset(os.path.join(path, "Oa%s_reflectance.nc" % str(i).zfill(2)))
+        arr.append(x)
+    return xr.merge(arr)
