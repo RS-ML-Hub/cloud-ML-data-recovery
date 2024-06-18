@@ -13,7 +13,7 @@ import keras
 
 class GenModel(keras.Model):
     def __init__(self, band_num=11):
-        super.__init__()
+        super().__init__()
         cn_num = 32
         self.coarseNet = keras.Sequential([
             GatedConv2D(cn_num, 5, 1),

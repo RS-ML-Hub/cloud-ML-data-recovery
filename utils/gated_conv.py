@@ -7,12 +7,12 @@ import keras
 
 class GatedConv2D(keras.Model):
     def __init__(self, cn_out, ker_size=5, stride=1, dilation=1, activation='relu'):
-        super.__init__()
+        super().__init__()
         #TODO determine if bn is needed 
         #self.bn = keras.layers.BatchNormalization()
         self.act = keras.layers.Activation(activation)
-        self.conv = keras.layers.Conv2D(filters=cn_out,stride=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation),
-        self.gate = keras.layers.Conv2D(filters=cn_out,stride=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation)
+        self.conv = keras.layers.Conv2D(filters=cn_out,strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation),
+        self.gate = keras.layers.Conv2D(filters=cn_out,strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation)
         self.sigmoid = keras.layers.Activation('sigmoid')
     def call(self, input):
         #TODO add the call function and remove pass (to avoid code linting errors on the following class)
@@ -24,7 +24,7 @@ class GatedConv2D(keras.Model):
 
 class GatedDeConv2D(keras.Model):
     def __init__(self, scale, cn_out, ker_size, stride, dilation):
-        super.__init__()
+        super().__init__()
         self.upsample = keras.layers.UpSampling2D(scale=scale, interpolation="Bilinear")
         self.conv = GatedConv2D(cn_out, ker_size, stride, dilation)
 
