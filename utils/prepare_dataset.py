@@ -1,10 +1,10 @@
 import os
 import numpy as np
 import xarray as xr
+import xbatcher as xb
 
 clouds_path = os.path.join('/home/shared/Data/cloud_masks')
 sen3_path = os.path.join('/home/shared/Data/OLCI/GoM/')
-
 
 def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25):
     """
@@ -32,6 +32,22 @@ def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25):
     print("There are {} cloud masks between {} and {} percent of coverage".format(len(files), low_bound, high_bound))
     return files[1:101]
 
+def fetch_cloud_masks(file_list):
+    """
+        This function fetches the cloud masks from the directory.
+        It loads the masks as numpy arrays and concatenates them into a tensor.
+
+        Args:
+        file_list: a list of files to be loaded
+
+        Returns:
+        tensor: a tensor containing all the masks in the list of size 256x256xnb_clouds
+    """
+    tens = np.load(os.path.join(clouds_path,file_list[0]))[:,:,np.newaxis]
+    for f in file_list[1:]:
+        tens = np.concatenate([tens,np.load(os.path.join(clouds_path,f))[:,:,np.newaxis]],axis=2)
+    return tens
+
 def list_sen3(path):
     """
         This function fetches the sen3 files from the directory.
@@ -57,18 +73,23 @@ def list_sen3(path):
 
 def fetch_sen3(file_list):
     #Load all wanted nc bands as one 3D array then concatenate all of them in a tensor
-    pass
+    ds = open_olci(file_list[0])
+    for batch in file_list[1:]:
+        ds = xr.concat((ds, open_olci(batch)), dim='batch')
+    return ds
 
-def fetch_cloud_masks(file_list):
-    return np.array([np.load(os.path.join(clouds_path,f)) for f in file_list])
-        
-
-def mask_images(sen3_files, cloud_files):
-    pass
+def mask_image(sen3_file, cloud_file):
+    for i in range(1,13):
+        sen3_file["Oa%s_reflectance" % str(i).zfill(2)] = sen3_file["Oa%s_reflectance" % str(i).zfill(2)] * cloud_file
 
 def open_olci(path):
     arr = []
     for i in range(1, 13):
-        x = xr.open_dataset(os.path.join(path, "Oa%s_reflectance.nc" % str(i).zfill(2)))
+        x = xr.open_dataset(os.path.join(path, "oa%s_reflectance.nc" % str(i).zfill(2)))
         arr.append(x)
     return xr.merge(arr)
+
+
+clouds = fetch_cloud_masks(filter_masks_by_percentage(clouds_path))
+ds = fetch_sen3([list_sen3(sen3_path)[0]])
+ds
