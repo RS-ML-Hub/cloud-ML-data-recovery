@@ -78,13 +78,13 @@ def mask_images(sen3_files, cloud_files):
     cloud_index = np.random.randint(0, cloud_files.shape[2], sen3_files["samples"].shape[0])
     sen_cloudy = sen3_files.copy(deep=True)
     for b in range(0, sen3_files["samples"].shape[0]):
-        for i in range(1,13):
+        for i in range(1,12):
             sen_cloudy["Oa%s_reflectance" % str(i).zfill(2)][b] = sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b].where(cloud_files[:,:,cloud_index[b]] == 0)
     return sen_cloudy        
 
 def open_olci(path):
     arr = []
-    for i in range(1, 13):
+    for i in range(1, 12):
         x = xr.open_dataset(os.path.join(path, "oa%s_reflectance.nc" % str(i).zfill(2)))
         arr.append(x)
     return xr.merge(arr)
