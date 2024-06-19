@@ -1,12 +1,9 @@
 import os
 import numpy as np
 import xarray as xr
-import xbatcher as xb
+import random
 
-clouds_path = os.path.join('/home/shared/Data/cloud_masks')
-sen3_path = os.path.join('/home/shared/Data/OLCI/GoM/')
-
-def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25):
+def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25, num_clouds=100):
     """
         This function filters cloud masks by the percentage of cloud cover.
         It returns a list of files that are within the boundaries.
@@ -28,11 +25,10 @@ def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25):
     #Map files where the percent is below the upper bound
     files = [f for f in files if int(f.split('PERCENT')[1].split('.')[0]) <= high_bound]
     #Both operations could be condensed into one line but for readability they are separated
-
     print("There are {} cloud masks between {} and {} percent of coverage".format(len(files), low_bound, high_bound))
-    return files[1:101]
+    return random.sample(files, num_clouds)
 
-def fetch_cloud_masks(file_list):
+def fetch_cloud_masks(clouds_path, file_list):
     """
         This function fetches the cloud masks from the directory.
         It loads the masks as numpy arrays and concatenates them into a tensor.
@@ -75,12 +71,16 @@ def fetch_sen3(file_list):
     #Load all wanted nc bands as one 3D array then concatenate all of them in a tensor
     ds = open_olci(file_list[0])
     for batch in file_list[1:]:
-        ds = xr.concat((ds, open_olci(batch)), dim='batch')
+        ds = xr.concat((ds, open_olci(batch)), dim='samples')
     return ds
 
-def mask_image(sen3_file, cloud_file):
-    for i in range(1,13):
-        sen3_file["Oa%s_reflectance" % str(i).zfill(2)] = sen3_file["Oa%s_reflectance" % str(i).zfill(2)] * cloud_file
+def mask_images(sen3_files, cloud_files):
+    cloud_index = np.random.randint(0, cloud_files.shape[2], sen3_files["samples"].shape[0])
+    sen_cloudy = sen3_files.copy(deep=True)
+    for b in range(0, sen3_files["samples"].shape[0]):
+        for i in range(1,13):
+            sen_cloudy["Oa%s_reflectance" % str(i).zfill(2)][b] = sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b].where(cloud_files[:,:,cloud_index[b]] == 0)
+    return sen_cloudy        
 
 def open_olci(path):
     arr = []
@@ -89,7 +89,18 @@ def open_olci(path):
         arr.append(x)
     return xr.merge(arr)
 
-
-clouds = fetch_cloud_masks(filter_masks_by_percentage(clouds_path))
-ds = fetch_sen3([list_sen3(sen3_path)[0]])
-ds
+def prepare_dataset(sen3_path_str='/home/shared/Data/OLCI/GoM/' , cloud_path_str='/home/shared/Data/cloud_masks/', low_bound=0, high_bound=25, num_samples=100, num_clouds=100):
+    sen3_path = os.path.join(sen3_path_str)
+    clouds_path = os.path.join(cloud_path_str)
+    clouds_list = filter_masks_by_percentage(clouds_path, low_bound, high_bound, num_clouds)
+    clouds = fetch_cloud_masks(clouds_path, clouds_list)
+    print("Cloud masks loaded")
+    sen3_list = list_sen3(sen3_path)
+    sen3_list_reduced = random.sample(sen3_list, num_samples)
+    print("SEN3 files selected")
+    ds = fetch_sen3(sen3_list_reduced)
+    print("SEN3 files loaded")
+    print("Masking images...")
+    dsc = mask_images(ds, clouds)
+    print("Images masked")
+    return ds,dsc
