@@ -13,7 +13,7 @@ class GenModel(keras.Model):
         super().__init__()
         cn_num = 32
         self.coarseNet = keras.Sequential([
-            keras.Input(shape=(256, 256, band_num)),
+            keras.Input(shape=(256, 256, band_num+1)),
             GatedConv2D(cn_num, 5, 1),
             GatedConv2D(2*cn_num, 4, 2),
             GatedConv2D(2*cn_num, 4, 1),
@@ -29,6 +29,6 @@ class GenModel(keras.Model):
             GatedConv2D(2*cn_num, 3, 1),
             GatedDeConv2D(2, cn_num, 4, 1),
             GatedConv2D(cn_num, 3, 1),
-            GatedConv2D(cn_num, 3, 1),
+            GatedConv2D(int(cn_num/2), 3, 1),
             GatedConv2D(band_num, 3, 1,activation=None),
         ])

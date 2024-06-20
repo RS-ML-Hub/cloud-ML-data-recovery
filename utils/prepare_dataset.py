@@ -77,9 +77,11 @@ def fetch_sen3(file_list):
 def mask_images(sen3_files, cloud_files):
     cloud_index = np.random.randint(0, cloud_files.shape[2], sen3_files["samples"].shape[0])
     sen_cloudy = xr.zeros_like(sen3_files)
+    sen_cloudy = sen_cloudy.assign(mask = xr.zeros_like(sen3_files["Oa01_reflectance"]))
     for b in range(0, sen3_files["samples"].shape[0]):
         for i in range(1,12):
             sen_cloudy["Oa%s_reflectance" % str(i).zfill(2)][b] = sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b] *(1- cloud_files[:,:,cloud_index[b]])
+        sen_cloudy["mask"][b] = cloud_files[:,:,cloud_index[b]]
     return sen_cloudy        
 
 def open_olci(path):
