@@ -15,20 +15,5 @@ class GenModel(keras.Model):
         self.coarseNet = keras.Sequential([
             keras.Input(shape=(256, 256, band_num)),
             GatedConv2D(cn_num, 5, 1),
-            GatedConv2D(2*cn_num, 4, 2),
-            GatedConv2D(2*cn_num, 4, 1),
-            GatedConv2D(4*cn_num, 3, 2),
-            GatedConv2D(4*cn_num, 3, 1),
-            GatedConv2D(4*cn_num, 3, 1),
-            GatedConv2D(4*cn_num, 3, 1, 2),
-            GatedConv2D(4*cn_num, 3, 1, 4),
-            GatedConv2D(4*cn_num, 3, 1, 8),
-            GatedConv2D(4*cn_num, 3, 1, 16),
-            GatedConv2D(4*cn_num, 3, 1),
-            GatedDeConv2D(2, 2*cn_num, 3, 1),
-            GatedConv2D(2*cn_num, 3, 1),
-            GatedDeConv2D(2, cn_num, 4, 1),
-            GatedConv2D(cn_num, 3, 1),
-            GatedConv2D(cn_num, 3, 1),
-            GatedConv2D(band_num, 3, 1,activation=None),
+            
         ])
