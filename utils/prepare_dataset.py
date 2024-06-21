@@ -80,6 +80,8 @@ def mask_images(sen3_files, cloud_files):
     sen_cloudy = sen_cloudy.assign(mask = xr.zeros_like(sen3_files["Oa01_reflectance"]))
     for b in range(0, sen3_files["samples"].shape[0]):
         for i in range(1,12):
+            #normalize then apply mask
+            sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b] = (np.log(sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b]) - np.min(np.log(sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b])))/(np.max(np.log(sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b])) - np.min(np.log(sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b])))
             sen_cloudy["Oa%s_reflectance" % str(i).zfill(2)][b] = sen3_files["Oa%s_reflectance" % str(i).zfill(2)][b] *(1- cloud_files[:,:,cloud_index[b]])
         sen_cloudy["mask"][b] = cloud_files[:,:,cloud_index[b]]
     return sen_cloudy        
