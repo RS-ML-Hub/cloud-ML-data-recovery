@@ -8,8 +8,8 @@ import keras
 
 
 def main():
-    dsnp_c = np.moveaxis(np.load("Cloudy_DS.npy"),3,0)
-    dsnp = np.moveaxis(np.load("Ground_truth.npy"),3,0)
+    dsnp_c = np.moveaxis(np.load("Cloudy_DS2.npy"),3,0)
+    dsnp = np.moveaxis(np.load("Ground_truth2.npy"),3,0)
 
     #Data normalisation
 
@@ -32,9 +32,10 @@ def main():
 
     model = GenModel()
     coarseNet = model.coarseNet
-    coarseNet.compile(optimizer='adam', loss="mae", metrics=['mean_absolute_error'])
+    coarseNet.compile(optimizer='adam', loss=lossL1, metrics=['mean_absolute_error', 'mean_squared_error', 'mean_absolute_percentage_error', 'mean_squared_logarithmic_error' , 'cosine_similarity', 'logcosh'])
     print(coarseNet.summary())
-    coarseNet.fit(train_ds, epochs=100, validation_data=test_ds, callbacks=[keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True), keras.callbacks.ModelCheckpoint(filepath='coarseNet.keras', save_best_only=True), keras.callbacks.TensorBoard(log_dir='./logs'), keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=5, verbose=1, mode='auto', min_delta=0.0001, cooldown=0, min_lr=0), keras.callbacks.CSVLogger('coarseNet.csv'), keras.callbacks.TerminateOnNaN()])
+    coarseNet.fit(train_ds, epochs=1000, validation_data=test_ds, callbacks=[keras.callbacks.EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True), keras.callbacks.ModelCheckpoint(filepath='coarseNet.keras', save_best_only=True), keras.callbacks.TensorBoard(log_dir='./logs'), keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=5, verbose=1, mode='auto', min_delta=0.0001, cooldown=0, min_lr=0), keras.callbacks.CSVLogger('coarseNet.csv'), keras.callbacks.TerminateOnNaN()])
+    print("Training complete")
 
 if __name__ == "__main__":
     main()
