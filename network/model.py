@@ -10,13 +10,13 @@ import tensorflow as tf
 from network.loss import lossL1
 from network.metrics import SSIM_metric
 class coarseNet(keras.Model):
-    def __init__(self, band_num=1):
+    def __init__(self, band_num=1, dropout=False):
         super().__init__()
         self.loss_tracker = keras.metrics.Mean(name="loss")
         self.mae_metric = keras.metrics.MeanAbsoluteError(name="mae")
         self.ssim_metric = SSIM_metric()
-        cn_num = 32
-        self.model = keras.Sequential([
+        cn_num = 64
+        self.architecture = [
             keras.Input(shape=(256, 256, band_num+1)),
             GatedConv2D(cn_num, 5, 1),
             GatedConv2D(2*cn_num, 4, 2),
@@ -35,7 +35,12 @@ class coarseNet(keras.Model):
             GatedDeConv2D(2, cn_num, 3, 1),
             GatedConv2D(int(cn_num/2), 3, 1),
             GatedConv2D(band_num, 3, 1,activation=None),
-        ])
+            ]
+        
+        if dropout:
+            self.architecture.insert(-3, keras.layers.Dropout(0.5))
+
+        self.model = keras.Sequential(self.architecture)
 
     def call(self, x):
         return self.model(x)
@@ -66,7 +71,8 @@ class coarseNet(keras.Model):
         y_pred = self(x, training=False)
         mask = x[:,:,:,-1]
         y_pred = tf.cast(y_pred, tf.float64)
-        self.compute_loss(y, y_pred, mask)
+        loss = lossL1(y, y_pred, mask)
+        self.loss_tracker.update_state(loss)
         for metric in self.metrics:
             if metric.name != "loss":
                 metric.update_state(y, y_pred)
