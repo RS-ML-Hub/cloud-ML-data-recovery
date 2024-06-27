@@ -28,7 +28,7 @@ class GatedDeConv2D(keras.Model):
         super(GatedDeConv2D, self).__init__()
         self.upsample = keras.layers.UpSampling2D(size=(scale, scale), interpolation='bilinear')
         self.bn = keras.layers.BatchNormalization()
-        self.act = keras.layers.LeakyReLU(negative_slope=0.2)
+        self.act = keras.layers.LeakyReLU(alpha=0.2)
         self.conv = keras.layers.Conv2D(filters=cn_out, strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation, kernel_initializer='he_normal')
         self.gate = keras.layers.Conv2D(filters=cn_out, strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation, kernel_initializer='he_normal')
         self.sigmoid = keras.layers.Activation('sigmoid')   

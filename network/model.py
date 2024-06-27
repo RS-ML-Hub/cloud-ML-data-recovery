@@ -9,14 +9,38 @@ import keras
 import tensorflow as tf
 from network.loss import lossL1
 from network.metrics import SSIM_metric
-class coarseNet(keras.Model):
-    def __init__(self, band_num=1, dropout=False):
+
+class Attention_Layer(keras.Layer):
+    def __init__(self, cn_num):
+        super(Attention_Layer,self).__init__()
+        self.query_conv = keras.layers.Conv2D(int(4*cn_num//8), 1, padding="same", kernel_initializer="he_normal")
+        self.key_conv = keras.layers.Conv2D(int(4*cn_num//8), 1, padding="same", kernel_initializer="he_normal")
+        self.value_conv = keras.layers.Conv2D(4*cn_num, 1, padding="same", kernel_initializer="he_normal")
+        self.softmax = keras.layers.Softmax()
+
+    def build(self, input_shape):
+        self.gamma = self.add_weight(name="gamma", shape=[1], initializer="ones", trainable=True)
+        return super(Attention_Layer,self).build(input_shape)
+
+    def call(self, x):
+        proj_query = self.query_conv(x)
+        proj_key = self.key_conv(x)
+        proj_value = self.value_conv(x)
+
+        energy = tf.matmul(proj_query, proj_key, transpose_b=True)
+        attention = self.softmax(energy)
+        out = tf.matmul(attention, proj_value)
+        out = self.gamma*out + x
+        return out
+    
+
+class GenModel(keras.Model):
+    def __init__(self, cn_num=64, band_num=1, dropout=False):
         super().__init__()
         self.loss_tracker = keras.metrics.Mean(name="loss")
         self.mae_metric = keras.metrics.MeanAbsoluteError(name="mae")
         self.ssim_metric = SSIM_metric()
-        cn_num = 64
-        self.architecture = [
+        self.coarseNet = keras.Sequential([
             keras.Input(shape=(256, 256, band_num+1)),
             GatedConv2D(cn_num, 5, 1),
             GatedConv2D(2*cn_num, 4, 2),
@@ -35,15 +59,47 @@ class coarseNet(keras.Model):
             GatedDeConv2D(2, cn_num, 3, 1),
             GatedConv2D(int(cn_num/2), 3, 1),
             GatedConv2D(band_num, 3, 1,activation=None),
-            ]
-        
-        if dropout:
-            self.architecture.insert(-3, keras.layers.Dropout(0.5))
+            ])
 
-        self.model = keras.Sequential(self.architecture)
+        self.refineNet = keras.Sequential([
+            keras.Input(shape=(256, 256, band_num+1)),
+            GatedConv2D(cn_num, 5, 1),
+            GatedConv2D(cn_num, 4, 2),
+            GatedConv2D(2*cn_num, 3, 1),
+            GatedConv2D(2*cn_num, 4, 2),
+            GatedConv2D(4*cn_num, 3, 1),
+            GatedConv2D(4*cn_num, 3, 1),
+            GatedConv2D(4*cn_num, 3, 1),
+            GatedConv2D(4*cn_num, 3, 1,2),
+            GatedConv2D(4*cn_num, 3, 1,4),
+            GatedConv2D(4*cn_num, 3, 1,8),
+            GatedConv2D(4*cn_num, 3, 1,16),
+        ])
+
+        self.refineNet_Attention = keras.Sequential([
+            keras.Input(shape=(64,64,4*cn_num)),
+            Attention_Layer(cn_num),
+        ])
+
+        self.refineNetUpSample = keras.Sequential([
+            keras.Input(shape=(64,64,4*cn_num)),
+            GatedConv2D(4*cn_num, 3, 1),
+            GatedConv2D(4*cn_num, 3, 1),
+            GatedDeConv2D(2, 2*cn_num, 3, 1),
+            GatedConv2D(2*cn_num, 3, 1),
+            GatedDeConv2D(2, cn_num, 3, 1),
+            GatedConv2D(cn_num, 3, 1),
+            GatedConv2D(int(cn_num/2), 3, 1),
+            GatedConv2D(band_num, 3, 1, activation=None)
+        ])
 
     def call(self, x):
-        return self.model(x)
+        coarse_out = self.coarseNet(x)
+        refine_downsample = self.refineNet(coarse_out)
+        refine_attention = self.refineNet_Attention(refine_downsample)
+        refine_upsample = self.refineNetUpSample(tf.concat([refine_downsample, refine_attention], axis=-1))
+        return coarse_out, refine_upsample
+
 
     def train_step(self, data):
         x, y = data
@@ -86,3 +142,10 @@ class coarseNet(keras.Model):
         # If you don't implement this property, you have to call
         # `reset_states()` yourself at the time of your choosing.
         return [self.loss_tracker, self.mae_metric, self.ssim_metric]
+
+
+def build_model(hp):
+    model = GenModel(hp.Int("cn_num", 32, 256, 32))
+    learning_rate = hp.Float("learning_rate", min_value=1e-5, max_value=1e-2, sampling="LOG")
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=learning_rate), loss="mse")
+    return model
