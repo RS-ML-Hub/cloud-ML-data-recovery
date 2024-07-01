@@ -142,8 +142,14 @@ class SAGAN(keras.Model):
         
     def compile(self,strategy, gen_optimizer, dis_optimizer):
         super().compile()
-        self.generator.compile(optimizer=gen_optimizer, loss="mse")
-        self.discriminator.compile(optimizer=dis_optimizer, loss="mse")
+        if strategy is not None:
+            with strategy.scope():
+                self.generator.compile(optimizer=gen_optimizer, loss="mse")
+                self.discriminator.compile(optimizer=dis_optimizer, loss="mse")
+        else:
+            self.generator.compile(optimizer=gen_optimizer, loss="mse")
+            self.discriminator.compile(optimizer=dis_optimizer, loss="mse")
+
 
     def train_step(self, data):
         x, y = data
@@ -154,26 +160,33 @@ class SAGAN(keras.Model):
             coarse, refined = self.generator(x, training=True)
             coarse = tf.cast(coarse, tf.float64)
             refined = tf.cast(refined, tf.float64)
-
+            #print("coarse", coarse.shape)
+            #print("refined", refined.shape)
             complete = mask * refined + (1 - mask) * y
-
+            #print("mask", mask.shape)
+            #print("complete", complete.shape)
             pos = tf.concat([y, mask], axis=-1)
+            #print("pos", pos.shape)
             neg = tf.concat([complete, mask], axis=-1)
+            #print("neg", neg.shape)
             pos_neg = tf.concat([pos, neg], axis=0)
-
+            #print("pos_neg", pos_neg.shape)
             pos_neg_pred = self.discriminator(pos_neg, training=True)
-
+            #print("pos_neg_pred", pos_neg_pred.shape)
             pred_pos, pred_neg = tf.split(pos_neg_pred, 2, axis=0)
-
+            #print("pred_pos", pred_pos.shape)
             dis_loss = tf.cast(DiscriminatorLoss(pred_pos, pred_neg), tf.float64)
-            
+            #print("dis_loss", dis_loss)
             img = tf.image.resize(y, (224,224))
             img = keras.applications.vgg16.preprocess_input(tf.image.grayscale_to_rgb(img))
             refined_img = tf.image.resize(refined, (224,224))
             refined_img = keras.applications.vgg16.preprocess_input(tf.image.grayscale_to_rgb(refined_img))
+            #print("img", img.shape)
+            #print("refined_img", refined_img.shape)
             feats_img = self.extractor(img)
+            #print("feats_img", feats_img[0].shape)
             feats_refined_img = self.extractor(refined_img)
-
+            #print("feats_refined_img", feats_refined_img[0].shape)
             coarse_loss = coarseLoss(y, coarse, mask)
             refined_loss = reconstructLoss(y, refined, mask)
             style_loss = tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64)
@@ -194,38 +207,50 @@ class SAGAN(keras.Model):
         return {"loss": self.loss_tracker.result()}
 
     def test_step(self, data):
-        x,y = data
-        y_pred = self.generator(x, training=False)
-        mask = x[:,:,:,-1]
-        y_pred = tf.cast(y_pred, tf.float64)
-        coarse, refined = self.generator(x, training=True)
+        x, y = data
+        print("y", y.shape)
+        y = tf.expand_dims(y, axis=-1)
+        print("y", y.shape)
+        mask = tf.expand_dims(x[:, :, :, -1], axis=-1)
+
+        coarse, refined = self.generator(x, training=False)
         coarse = tf.cast(coarse, tf.float64)
         refined = tf.cast(refined, tf.float64)
-
         complete = mask*refined + (1-mask)*y
-
 
         pos = tf.concat([y,mask], axis=-1)
         neg = tf.concat([complete,mask], axis=-1)
         pos_neg = tf.concat([pos,neg], axis=0)
 
-        pos_neg_pred = self.discriminator(pos_neg)
+        pos_neg_pred = self.discriminator(pos_neg, training=False)
 
         pred_pos, pred_neg = tf.split(pos_neg_pred, 2, axis=0)
 
-        dis_loss = DiscriminatorLoss(pred_pos, pred_neg)
+        dis_loss = tf.cast(DiscriminatorLoss(pred_pos, pred_neg), tf.float64)
+        #print("dis_loss", dis_loss)
+        
+        img = tf.image.resize(y, (224,224))
+        img = keras.applications.vgg16.preprocess_input(tf.image.grayscale_to_rgb(img))
+        refined_img = tf.image.resize(refined, (224,224))
+        refined_img = keras.applications.vgg16.preprocess_input(tf.image.grayscale_to_rgb(refined_img))
+        complete_img = tf.image.resize(complete, (224,224))
+        complete_img = keras.applications.vgg16.preprocess_input(tf.image.grayscale_to_rgb(complete_img))
+        #print("img", img.shape)
+        #print("refined_img", refined_img.shape)
+        
+        feats_img = self.extractor(img)
+        #print("feats_img", feats_img[0].shape)
+        feats_refined_img = self.extractor(refined_img)
+        feats_complete_img = self.extractor(complete_img)
+
         coarse_loss = coarseLoss(y, coarse, mask)
         refined_loss = reconstructLoss(y, refined, mask)
-        style_loss= StyleLoss(y, refined)
-        perceptual_loss = PerceptualLoss(y, refined)
+        style_loss = tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64))
+        perceptual_loss = tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64))
         gen_loss = GeneratorLoss(neg)
+        total_loss = tf.math.add(tf.math.scalar_mul(1.2, tf.math.add(coarse_loss, refined_loss)), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
 
-
-        total_loss = 1.2*(coarse_loss + refined_loss) + 0.001*(120*style_loss + 5*perceptual_loss) + 0.005*gen_loss
-
-        
-
-
+        # Store our own metrics
         self.loss_tracker.update_state(total_loss)
         self.coarse_metric.update_state(coarse_loss)
         self.refine_metric.update_state(refined_loss)
@@ -233,7 +258,7 @@ class SAGAN(keras.Model):
         self.perceptual_metric.update_state(perceptual_loss)
         self.gen_metric.update_state(gen_loss)
         self.dis_metric.update_state(dis_loss)
-        self.ssim_metric.update_state(y, refined)
+        self.ssim_metric.update_state(y, complete)
         return {m.name: m.result() for m in self.metrics}
 
     @property

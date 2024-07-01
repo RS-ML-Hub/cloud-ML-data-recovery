@@ -5,21 +5,22 @@ from network.layers import SNConv, Attention_Layer
 class SelfAttentionDiscriminator(keras.Model):
     def __init__(self, band_num=1):
         super().__init__()
-        cnum = 32
+        self.cnum = 32
+        
         self.SAD = keras.Sequential([
             keras.layers.InputLayer(input_shape=(256,256,band_num+1)),
-            SNConv(2*cnum, 4, 2),
-            SNConv(4*cnum, 4, 2),
-            SNConv(8*cnum, 4, 2),
-            SNConv(8*cnum, 4, 2),
-            SNConv(8*cnum, 4, 2),
-            SNConv(8*cnum, 4, 2),
-            Attention_Layer(8*cnum,'relu'),
-            SNConv(8*cnum, 4, 2),
+            SNConv(2*self.cnum, 4, 2),
+            SNConv(4*self.cnum, 4, 2),
+            SNConv(8*self.cnum, 4, 2),
+            SNConv(8*self.cnum, 4, 2),
+            SNConv(8*self.cnum, 4, 2),
+            SNConv(8*self.cnum, 4, 2),
+            Attention_Layer(8*self.cnum,'relu'),
+            SNConv(8*self.cnum, 4, 2),
+            keras.layers.Flatten()
         ]) 
     def call(self,x):
-        out = self.SAD(x)
-        return tf.reshape(out, [tf.shape(out)[0], -1])
+        return self.SAD(x)
 
 class LocalDiscriminator(keras.Model):
     def __init__(self):

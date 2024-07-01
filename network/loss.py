@@ -19,7 +19,9 @@ def coarseLoss(y_true, y_pred, mask):
     return chan_loss
 
 def reconstructLoss(y_true, y_pred,mask):
+    y_true = y_true[:,:,:,0]
     y_pred = y_pred[:,:,:,0]
+    mask = mask[:,:,:,0]
     chan1 = tf.reduce_mean(tf.abs(y_true[:,:,:] - y_pred[:,:,:])*(mask[:,:,:])/tf.reduce_mean(tf.reshape(mask[:,:,:], (-1,1,1))))
     chan2 = tf.reduce_mean(tf.abs(y_true[:,:,:] - y_pred[:,:,:])*(1- mask[:,:,:])/(1-tf.reduce_mean(tf.reshape(mask[:,:,:],(-1,1,1)))))
     chan_loss = chan1 + chan2

@@ -7,9 +7,6 @@ class SSIM_metric(keras.metrics.Metric):
         self.ssim = self.add_weight(name='ssim', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        y_true = tf.expand_dims(y_true, axis=0)
-        y_true = tf.expand_dims(y_true, axis=-1)
-        y_pred = tf.expand_dims(y_pred, axis=0)
         ssim = tf.image.ssim(y_true, y_pred, max_val=1.0)
         self.ssim.assign(tf.reduce_mean(ssim))
 
