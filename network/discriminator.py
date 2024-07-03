@@ -3,9 +3,9 @@ import keras
 from network.layers import SNConv, Attention_Layer
 
 class SelfAttentionDiscriminator(keras.Model):
-    def __init__(self, band_num=1):
+    def __init__(self, band_num=11, cn_num=32):
         super().__init__()
-        self.cnum = 32
+        self.cnum = cn_num
         
         self.SAD = keras.Sequential([
             keras.layers.InputLayer(input_shape=(256,256,band_num+1)),
