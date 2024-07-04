@@ -42,7 +42,9 @@ class OutputImageToTensorBoard(keras.callbacks.Callback):
             bands = [3,5,9]
             with self.file_writer.as_default():
                 coarse, fine = self.sagan(self.sample_images, training=False)
-                fine = fine*self.sample_images[:,:,:,-1] + (1-self.sample_images[:,:,:,-1])*self.sample_images[:,:,:,:-1]
+                coarse = tf.cast(coarse, tf.float64)
+                fine = tf.cast(fine, tf.float64)
+                fine = fine*tf.expand_dims(self.sample_images[:,:,:,-1],axis=-1) + (1-tf.expand_dims(self.sample_images[:,:,:,-1],axis=-1))*self.sample_images[:,:,:,:-1]
                 #shape of coarse
                 coarse = np.stack([coarse[:,:,:,i] for i in bands], axis=-1)
                 fine = np.stack([fine[:,:,:,i] for i in bands], axis=-1)
