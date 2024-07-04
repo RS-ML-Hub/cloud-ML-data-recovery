@@ -26,3 +26,26 @@ class LearningRateSchedulerCallback(keras.callbacks.Callback):
                 self.last_improvement = epoch
                 print("Learning rate reduced to ", lr*self.factor)
 
+class OutputImageToTensorBoard(keras.callbacks.Callback):
+    def __init__(self, sagan, epochs, test_ds ,log_dir, n_images=5):
+        super().__init__()
+        self.frequency = epochs
+        self.n_images=n_images
+        for images,_ in test_ds.take(1):
+            indices = np.random.choice(images.shape[0], n_images, replace=False)
+            self.sample_images = images.numpy()[indices]
+        self.sagan = sagan
+        self.file_writer = tf.summary.create_file_writer(log_dir)
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % self.frequency == 0:
+            bands = [3,5,9]
+            with self.file_writer.as_default():
+                coarse, fine = self.sagan(self.sample_images, training=False)
+                #shape of coarse
+                coarse = np.stack([coarse[:,:,:,i] for i in bands], axis=-1)
+                fine = np.stack([fine[:,:,:,i] for i in bands], axis=-1)
+                for j in range(self.n_images):
+                    tf.summary.image("Generated coarse_"+str(j), tf.expand_dims(coarse[j,:,:,:],axis=0), step=epoch)
+                    tf.summary.image("Generated refined_"+str(j), tf.expand_dims(fine[j,:,:,:],axis=0), step=epoch)    
+        return
