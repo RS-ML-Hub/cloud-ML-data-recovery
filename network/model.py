@@ -169,59 +169,61 @@ class SAGAN(keras.Model):
         x, y = data
         y = tf.cast(y, tf.float64)
         mask = tf.expand_dims(x[:, :, :, -1], axis=-1)
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as dis_tape:
-          coarse, refined = self.generator(x, training=False)
-          coarse = tf.cast(coarse, tf.float64)
-          refined = tf.cast(refined, tf.float64)
-          
-          #refined = (refined - tf.reduce_min(refined, axis=[0,3], keepdims=True))/(tf.reduce_max(refined, axis=[0,3], keepdims=True)-tf.reduce_min(refined, axis=[0,3], keepdims=True))
-          #coarse = (coarse - tf.reduce_min(coarse, axis=[0,3], keepdims=True))/(tf.reduce_max(coarse, axis=[0,3], keepdims=True)-tf.reduce_min(coarse, axis=[0,3], keepdims=True))
-          coarse_loss = coarseLoss(y, coarse, mask)
-          complete = mask*refined + (1-mask)*y
-          refined_loss = reconstructLoss(y, refined, mask)
-        
-          pos = tf.concat([y,mask], axis=-1)
-          neg = tf.concat([complete,mask], axis=-1)
-          pos_neg = tf.concat([pos,neg], axis=0)
 
-          pos_neg_pred = self.discriminator(pos_neg, training=False)
+        with tf.GradientTape() as dis_tape:
+            coarse, refined = self.generator(x, training=False)
+            coarse = tf.cast(coarse, tf.float64)
+            refined = tf.cast(refined, tf.float64)
+            
+            coarse_loss = coarseLoss(y, coarse, mask)
+            complete = mask * refined + (1 - mask) * y
+            refined_loss = reconstructLoss(y, refined, mask)
 
-          pred_pos, pred_neg = tf.split(pos_neg_pred, 2, axis=0)
-          gen_loss = tf.cast(GeneratorLoss(pred_neg), tf.float64)
+            pos = tf.concat([y, mask], axis=-1)
+            neg = tf.concat([complete, mask], axis=-1)
+            pos_neg = tf.concat([pos, neg], axis=0)
 
-          dis_loss = tf.cast(DiscriminatorLoss(pred_pos, pred_neg), tf.float64)
-          
-          #print("dis_loss", dis_loss)
-        
-          #img = tf.image.resize(y[:,:,:,3:6], (224,224))
-          #img = keras.applications.vgg16.preprocess_input(img)
-          #refined_img = tf.image.resize(refined[:,:,:,3:6], (224,224))
-          #refined_img = keras.applications.vgg16.preprocess_input(refined_img)
-          #complete_img = tf.image.resize(complete[:,:,:,3:6], (224,224))
-          #complete_img = keras.applications.vgg16.preprocess_input(complete_img)
-          #print("img", img.shape)
-          #print("refined_img", refined_img.shape)
-        
-          feats_img = self.extractor(y)
-          #print("feats_img", feats_img[0].shape)
-          feats_refined_img = self.extractor(refined)
-          feats_complete_img = self.extractor(complete)
+            pos_neg_pred = self.discriminator(pos_neg, training=True)
 
-          style_loss = tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64))
-          perceptual_loss = tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64))
-          total_loss = tf.math.add(tf.math.scalar_mul(1.2, tf.math.add(coarse_loss, refined_loss)), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
-
-
-        # Compute gradients
+            pred_pos, pred_neg = tf.split(pos_neg_pred, 2, axis=0)
+            dis_loss = tf.cast(DiscriminatorLoss(pred_pos, pred_neg), tf.float64)
+            
+        # Compute gradients for the discriminator
         dis_gradients = dis_tape.gradient(dis_loss, self.discriminator.trainable_variables)
+        self.discriminator.optimizer.apply_gradients(zip(dis_gradients, self.discriminator.trainable_variables))
+            
+        with tf.GradientTape() as gen_tape:
+            coarse, refined = self.generator(x, training=True)
+            coarse = tf.cast(coarse, tf.float64)
+            refined = tf.cast(refined, tf.float64)
+            
+            coarse_loss = coarseLoss(y, coarse, mask)
+            complete = mask * refined + (1 - mask) * y
+            refined_loss = reconstructLoss(y, refined, mask)
+            
+            
+            neg = tf.concat([complete, mask], axis=-1)
+
+
+            pred_neg = self.discriminator(neg, training=False)
+            gen_loss = tf.cast(GeneratorLoss(pred_neg), tf.float64)
+            
+            feats_img = self.extractor(y)
+            feats_refined_img = self.extractor(refined)
+            feats_complete_img = self.extractor(complete)
+
+            style_loss = tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64))
+            perceptual_loss = tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64))
+            total_loss = tf.math.add(tf.math.scalar_mul(1.2, tf.math.add(coarse_loss, refined_loss)), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
+
+        # Compute gradients for the generator
         gen_gradients = gen_tape.gradient(total_loss, self.generator.trainable_variables)
         del refined
         del pred_neg
         del pred_pos
         del coarse
 
-        # Apply gradients
-        self.discriminator.optimizer.apply_gradients(zip(dis_gradients, self.discriminator.trainable_variables))
+        # Apply gradients to the generator
         self.generator.optimizer.apply_gradients(zip(gen_gradients, self.generator.trainable_variables))
 
         # Compute our own metrics
@@ -249,11 +251,14 @@ class SAGAN(keras.Model):
 
         pos_neg_pred = self.discriminator(pos_neg, training=False)
 
-        pred_pos, pred_neg = tf.split(pos_neg_pred, 2, axis=0)
-        gen_loss = tf.cast(GeneratorLoss(pred_neg),tf.float64)
-        dis_loss = tf.cast(DiscriminatorLoss(pred_pos, pred_neg), tf.float64)
-        del pred_neg
+        pred_pos, pred_neg_disc = tf.split(pos_neg_pred, 2, axis=0)
+        dis_loss = tf.cast(DiscriminatorLoss(pred_pos, pred_neg_disc), tf.float64)
+        del pred_neg_disc
         del pred_pos
+
+        pred_neg = self.discriminator(neg, training=False)
+        gen_loss = tf.cast(GeneratorLoss(pred_neg),tf.float64)
+
         #print("dis_loss", dis_loss)
         
         #img = tf.image.resize(y[:,:,:,3:6], (224,224))
