@@ -10,7 +10,7 @@ from numpy import float32
 import tensorflow as tf
 from network.loss import coarseLoss, DiscriminatorLoss, GeneratorLoss, StyleLoss, PerceptualLoss, reconstructLoss
 from network.metrics import SSIM_metric
-from network.discriminator import SelfAttentionDiscriminator
+from network.discriminator import SelfAttentionDiscriminator, MultiDiscriminator
 
 class VGG_Feature_Extractor(keras.Model):
   def __init__(self, band_num=11):
@@ -84,12 +84,14 @@ class GenModel(keras.Model):
 
     def call(self, x):
         coarse = self.coarseNet(x)
+        coarse = tf.clip_by_value(coarse, -1, 1)
         mask = tf.expand_dims(x[:,:,:,-1], axis=-1)
         complete_coarse = coarse*mask + x[:,:,:,:-1]*(1-mask)
         coarse_out = tf.concat([complete_coarse, tf.expand_dims(x[:,:,:,-1], axis=-1)], axis=-1)
         refine_downsample = self.refineNet(coarse_out)
         refine_attention = self.refineNet_Attention(refine_downsample)
         refine_upsample = self.refineNetUpSample(refine_attention)
+        refine_upsample = tf.clip_by_value(refine_upsample, -1, 1)
         return coarse_out, refine_upsample
 
     """ 
@@ -153,7 +155,7 @@ class SAGAN(keras.Model):
         self.dis_metric = keras.metrics.Mean(name="dis_loss")
         self.ssim_metric = SSIM_metric()
         self.generator = GenModel(cn_num)
-        self.discriminator = SelfAttentionDiscriminator(cn_num = 32)
+        self.discriminator = MultiDiscriminator()
         self.extractor = VGG_Feature_Extractor()
     def compile(self,strategy, gen_optimizer, dis_optimizer):
         super().compile()
@@ -288,7 +290,7 @@ class SAGAN(keras.Model):
         self.perceptual_metric.update_state(perceptual_loss)
         self.gen_metric.update_state(gen_loss)
         self.dis_metric.update_state(dis_loss)
-        self.ssim_metric.update_state(y, complete)
+        self.ssim_metric.update_state((y+1)/2, (complete+1)/2)
         return {m.name: m.result() for m in self.metrics}
 
     @property

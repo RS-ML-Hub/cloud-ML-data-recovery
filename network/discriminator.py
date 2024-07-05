@@ -2,6 +2,9 @@ import tensorflow as tf
 import keras
 from network.layers import SNConv, Attention_Layer
 
+def crop(x, crop_size):
+    return 
+
 class SelfAttentionDiscriminator(keras.Model):
     def __init__(self, band_num=11, cn_num=32):
         super().__init__()
@@ -23,21 +26,22 @@ class SelfAttentionDiscriminator(keras.Model):
         return self.SAD(x)
 
 class LocalDiscriminator(keras.Model):
-    def __init__(self):
+    def __init__(self, crop_size=64, band_num=11):
         super().__init__()
         cnum = 32
         self.localD= keras.Sequential([
+            keras.layers.InputLayer(input_shape=(crop_size,crop_size,band_num+1)),
             SNConv(2*cnum, 4, 2),
             SNConv(4*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
+            keras.layers.Flatten(),
         ])
 
     def call(self,x):
-        out = self.localD(x)
-        return tf.reshape(out, (out.shape[0], -1))
+        return self.localD(x)
         
 class GlobalDiscriminator(keras.Model):
     def __init__(self):
@@ -51,18 +55,21 @@ class GlobalDiscriminator(keras.Model):
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
+            keras.layers.Flatten(),
         ])
 
     def call(self,x):
-        out = self.globalD(x)
+        return self.globalD(x)
         #reshape to 1D
-        return tf.reshape(out, (out.shape[0], -1))
+
 
 class MultiDiscriminator(keras.Model):
-    def __init__(self):
+    def __init__(self, crop_size=64):
         super().__init__()
         self.input_shape = (2048)
-        self.localD = LocalDiscriminator()
+        self.crop_size = crop_size
+        
+        self.localD = LocalDiscriminator(crop_size=crop_size)
         self.globalD = GlobalDiscriminator()
         self.act = keras.activations.sigmoid
         self.lin2 = keras.layers.Dense(1024)
@@ -70,8 +77,8 @@ class MultiDiscriminator(keras.Model):
 
 
     def call(self, x):
-
-        local_out = self.localD(x)
+        cropped_x = tf.image.random_crop(x, size=[tf.shape(x)[0],self.crop_size, self.crop_size, tf.shape(x)[3]], seed=42)
+        local_out = self.localD(cropped_x)
         global_out = self.globalD(x)
         out = self.act(self.lin2(local_out)+ self.lin3(global_out))
         return self.act(out)
