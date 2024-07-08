@@ -167,20 +167,20 @@ class SAGAN(keras.Model):
             self.discriminator.compile(optimizer=dis_optimizer, loss="mse")
     
     def train_step(self, data):
-        x, y = data
+        masks, y = data
         y = tf.cast(y, tf.float64)
-        mask = tf.expand_dims(x[:, :, :, -1], axis=-1)
-
+        x = y * (1 - masks) + masks
+        x = tf.concat([x, masks], axis=-1)
         with tf.GradientTape() as dis_tape:
             coarse, refined = self.generator(x, training=False)
             coarse = tf.cast(coarse, tf.float64)
             refined = tf.cast(refined, tf.float64)
             
-            complete = mask * refined + (1 - mask) * y
-            refined_loss = reconstructLoss(y, coarse, refined, mask)
+            complete = masks * refined + (1 - masks) * y
+            refined_loss = reconstructLoss(y, coarse, refined, masks)
 
-            pos = tf.concat([y, mask], axis=-1)
-            neg = tf.concat([complete, mask], axis=-1)
+            pos = tf.concat([y, masks], axis=-1)
+            neg = tf.concat([complete, masks], axis=-1)
             pos_neg = tf.concat([pos, neg], axis=0)
 
             pos_neg_pred = self.discriminator(pos_neg, training=True)
@@ -197,11 +197,11 @@ class SAGAN(keras.Model):
             coarse = tf.cast(coarse, tf.float64)
             refined = tf.cast(refined, tf.float64)
         
-            complete = mask * refined + (1 - mask) * y
-            reconstruct_loss = reconstructLoss(y, coarse, refined, mask)
+            complete = masks * refined + (1 - masks) * y
+            reconstruct_loss = reconstructLoss(y, coarse, refined, masks)
             
             
-            neg = tf.concat([complete, mask], axis=-1)
+            neg = tf.concat([complete, masks], axis=-1)
 
 
             pred_neg = self.discriminator(neg, training=False)
@@ -231,20 +231,21 @@ class SAGAN(keras.Model):
 
     
     def test_step(self, data):
-        x, y = data
+        masks, y = data
         y = tf.cast(y, tf.float64)
-        mask = tf.expand_dims(x[:, :, :, -1], axis=-1)
+        x = y * (1 - masks) + masks
+        x = tf.concat([x, masks], axis=-1)
         coarse, refined = self.generator(x, training=False)
         coarse = tf.cast(coarse, tf.float64)
         refined = tf.cast(refined, tf.float64)
         #refined = (refined - tf.reduce_min(refined, axis=[0,3], keepdims=True))/(tf.reduce_max(refined, axis=[0,3], keepdims=True)-tf.reduce_min(refined, axis=[0,3], keepdims=True))
         #coarse = (coarse - tf.reduce_min(coarse, axis=[0,3], keepdims=True))/(tf.reduce_max(coarse, axis=[0,3], keepdims=True)-tf.reduce_min(coarse, axis=[0,3], keepdims=True))
-        complete = mask*refined + (1-mask)*y
-        reconstruct_loss = tf.cast(reconstructLoss(y, coarse, refined, mask),tf.float64)
+        complete = masks*refined + (1-masks)*y
+        reconstruct_loss = tf.cast(reconstructLoss(y, coarse, refined, masks),tf.float64)
         del coarse
         
-        pos = tf.concat([y,mask], axis=-1)
-        neg = tf.concat([complete,mask], axis=-1)
+        pos = tf.concat([y,masks], axis=-1)
+        neg = tf.concat([complete,masks], axis=-1)
         pos_neg = tf.concat([pos,neg], axis=0)
 
         pos_neg_pred = self.discriminator(pos_neg, training=False)
@@ -297,10 +298,5 @@ class SAGAN(keras.Model):
         # `reset_states()` yourself at the time of your choosing.
         return [self.loss_tracker, self.reconstruct_metric, self.style_metric, self.perceptual_metric, self.gen_metric, self.dis_metric , self.ssim_metric]
 
-
-
-def build_model(hp):
-    model = GenModel(hp.Int("cn_num", 32, 256, 32))
-    learning_rate = hp.Float("learning_rate", min_value=1e-5, max_value=1e-2, sampling="LOG")
-    model.compile(optimizer=keras.optimizers.Adam(learning_rate=learning_rate), loss="mse")
-    return model
+    def call(self, x):
+        return self.generator(x, training=False)
