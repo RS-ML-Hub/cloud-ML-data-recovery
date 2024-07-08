@@ -8,7 +8,7 @@ from network.layers import GatedConv2D, GatedDeConv2D, Attention_Layer
 import keras
 from numpy import float32
 import tensorflow as tf
-from network.loss import coarseLoss, DiscriminatorLoss, GeneratorLoss, StyleLoss, PerceptualLoss, reconstructLoss
+from network.loss import DiscriminatorLoss, GeneratorLoss, StyleLoss, PerceptualLoss, reconstructLoss
 from network.metrics import SSIM_metric
 from network.discriminator import SelfAttentionDiscriminator, MultiDiscriminator
 
@@ -147,8 +147,7 @@ class SAGAN(keras.Model):
     def __init__(self,cn_num=32):
         super().__init__()
         self.loss_tracker = keras.metrics.Mean(name="loss")
-        self.coarse_metric = keras.metrics.Mean(name="coarse_loss")
-        self.refine_metric = keras.metrics.Mean(name="refine_loss")
+        self.reconstruct_metric = keras.metrics.Mean(name="reconstruct_loss")
         self.style_metric = keras.metrics.Mean(name="style_loss")
         self.perceptual_metric = keras.metrics.Mean(name="perceptual_loss")
         self.gen_metric = keras.metrics.Mean(name="gen_loss")
@@ -177,9 +176,8 @@ class SAGAN(keras.Model):
             coarse = tf.cast(coarse, tf.float64)
             refined = tf.cast(refined, tf.float64)
             
-            coarse_loss = coarseLoss(y, coarse, mask)
             complete = mask * refined + (1 - mask) * y
-            refined_loss = reconstructLoss(y, refined, mask)
+            refined_loss = reconstructLoss(y, coarse, refined, mask)
 
             pos = tf.concat([y, mask], axis=-1)
             neg = tf.concat([complete, mask], axis=-1)
@@ -198,10 +196,9 @@ class SAGAN(keras.Model):
             coarse, refined = self.generator(x, training=True)
             coarse = tf.cast(coarse, tf.float64)
             refined = tf.cast(refined, tf.float64)
-            
-            coarse_loss = coarseLoss(y, coarse, mask)
+        
             complete = mask * refined + (1 - mask) * y
-            refined_loss = reconstructLoss(y, refined, mask)
+            reconstruct_loss = reconstructLoss(y, coarse, refined, mask)
             
             
             neg = tf.concat([complete, mask], axis=-1)
@@ -216,7 +213,7 @@ class SAGAN(keras.Model):
 
             style_loss = tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64))
             perceptual_loss = tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64))
-            total_loss = tf.math.add(tf.math.scalar_mul(1.2, tf.math.add(coarse_loss, refined_loss)), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
+            total_loss = tf.math.add(tf.math.scalar_mul(1.2, reconstruct_loss), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
 
         # Compute gradients for the generator
         gen_gradients = gen_tape.gradient(total_loss, self.generator.trainable_variables)
@@ -242,10 +239,9 @@ class SAGAN(keras.Model):
         refined = tf.cast(refined, tf.float64)
         #refined = (refined - tf.reduce_min(refined, axis=[0,3], keepdims=True))/(tf.reduce_max(refined, axis=[0,3], keepdims=True)-tf.reduce_min(refined, axis=[0,3], keepdims=True))
         #coarse = (coarse - tf.reduce_min(coarse, axis=[0,3], keepdims=True))/(tf.reduce_max(coarse, axis=[0,3], keepdims=True)-tf.reduce_min(coarse, axis=[0,3], keepdims=True))
-        coarse_loss = tf.cast(coarseLoss(y, coarse, mask),tf.float64)
-        del coarse
         complete = mask*refined + (1-mask)*y
-        refined_loss = tf.cast(reconstructLoss(y, refined, mask),tf.float64)
+        reconstruct_loss = tf.cast(reconstructLoss(y, coarse, refined, mask),tf.float64)
+        del coarse
         
         pos = tf.concat([y,mask], axis=-1)
         neg = tf.concat([complete,mask], axis=-1)
@@ -280,12 +276,11 @@ class SAGAN(keras.Model):
 
         style_loss = tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64))
         perceptual_loss = tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64))
-        total_loss = tf.math.add(tf.math.scalar_mul(1.2, tf.math.add(coarse_loss, refined_loss)), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
+        total_loss = tf.math.add(tf.math.scalar_mul(1.2, reconstruct_loss), tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(tf.math.scalar_mul(120, style_loss), tf.math.scalar_mul(5, perceptual_loss))), tf.math.scalar_mul(0.005, gen_loss)))
 
         # Store our own metrics
         self.loss_tracker.update_state(total_loss)
-        self.coarse_metric.update_state(coarse_loss)
-        self.refine_metric.update_state(refined_loss)
+        self.reconstruct_metric.update_state(reconstruct_loss)
         self.style_metric.update_state(style_loss)
         self.perceptual_metric.update_state(perceptual_loss)
         self.gen_metric.update_state(gen_loss)
@@ -300,7 +295,7 @@ class SAGAN(keras.Model):
         # or at the start of `evaluate()`.
         # If you don't implement this property, you have to call
         # `reset_states()` yourself at the time of your choosing.
-        return [self.loss_tracker, self.coarse_metric, self.refine_metric, self.style_metric, self.perceptual_metric, self.gen_metric, self.dis_metric , self.ssim_metric]
+        return [self.loss_tracker, self.reconstruct_metric, self.style_metric, self.perceptual_metric, self.gen_metric, self.dis_metric , self.ssim_metric]
 
 
 

@@ -8,29 +8,17 @@ def GeneratorLoss(neg):
     return -tf.reduce_mean(neg)
 
 
-
-def coarseLoss(y_true, y_pred, mask):
+def reconstructLoss(y_true, coarse, refined, mask):
     mask = mask[:,:,:,0]
     chan_loss = 0
     mask_vectorized= tf.reshape(mask, [tf.shape(mask)[0],-1])
     mvm = tf.reduce_mean(mask_vectorized, axis=1)
     mvmr = tf.reshape(mvm, [-1,1,1,1])
-    for i in range(11):
-      chan1 = tf.reduce_mean(tf.abs(y_true[:,:,:,i] - y_pred[:,:,:,i])*(mask[:,:,:])/(mvmr))
-      chan2 = tf.reduce_mean(tf.abs(y_true[:,:,:,i] - y_pred[:,:,:,i])*(1- mask[:,:,:])/(1-mvmr))
-      chan_loss += chan1 + chan2
-    return chan_loss
-
-def reconstructLoss(y_true, y_pred,mask):
-    mask = mask[:,:,:,0]
-    chan_loss = 0
-    mask_vectorized= tf.reshape(mask, [tf.shape(mask)[0],-1])
-    mvm = tf.reduce_mean(mask_vectorized, axis=1)
-    mvmr = tf.reshape(mvm, [-1,1,1,1])
-    for i in range(11):
-      chan1 = tf.reduce_mean(tf.abs(y_true[:,:,:,i] - y_pred[:,:,:,i])*(mask[:,:,:])/(mvmr))
-      chan2 = tf.reduce_mean(tf.abs(y_true[:,:,:,i] - y_pred[:,:,:,i])*(1- mask[:,:,:])/(1-mvmr))
-      chan_loss += chan1 + chan2
+    coarse1 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - coarse[:,:,:,:-1])*(tf.expand_dims(mask[:,:,:],axis=-1))/(mvmr))
+    coarse2 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - coarse[:,:,:,:-1])*(1- tf.expand_dims(mask[:,:,:],axis=-1))/(1-mvmr))
+    refine1 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(tf.expand_dims(mask[:,:,:],axis=-1))/(mvmr))
+    refine2 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(1- tf.expand_dims(mask[:,:,:],axis=-1))/(1-mvmr))
+    chan_loss = coarse1+coarse2+refine1+refine2
     return chan_loss
 
 

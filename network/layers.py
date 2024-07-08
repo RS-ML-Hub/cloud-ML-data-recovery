@@ -65,7 +65,7 @@ class Attention_Layer(keras.Model):
         self.softmax = keras.layers.Softmax()
 
     def build(self, input_shape):
-        self.gamma = self.add_weight(name="gamma", shape=[1], initializer="ones", trainable=True)
+        self.gamma = self.add_weight(name="gamma", shape=[1], initializer="zeros", trainable=True)
         return super(Attention_Layer,self).build(input_shape)
 
     def call(self, x):
