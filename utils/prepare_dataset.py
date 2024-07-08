@@ -22,7 +22,7 @@ def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25, num_clou
     cloud_df = pandas.read_csv("/home/shared/Data/cloud_masks_meta.csv")
     print("There are {} cloud masks in the directory".format(len(files)))
     filtered_clouds = cloud_df[(cloud_df["cloud_class"] == type_mask)]
-    percentage = filtered_clouds.apply(lambda x: x["missing_pixels"]/(256*256), axis=1)
+    percentage = filtered_clouds.apply(lambda x: 100*x["missing_pixels"]/(256*256), axis=1)
     filtered_clouds = filtered_clouds[(percentage >= low_bound) & (percentage <= high_bound)]
 
     samples = filtered_clouds.sample(num_clouds)["filename"].values

@@ -49,6 +49,6 @@ class OutputImageToTensorBoard(keras.callbacks.Callback):
                 coarse = np.stack([coarse[:,:,:,i] for i in bands], axis=-1)
                 fine = np.stack([fine[:,:,:,i] for i in bands], axis=-1)
                 for j in range(self.n_images):
-                    tf.summary.image("Generated coarse_"+str(j), tf.expand_dims(coarse[j,:,:,:],axis=0), step=epoch)
-                    tf.summary.image("Generated refined_"+str(j), tf.expand_dims(fine[j,:,:,:],axis=0), step=epoch)    
+                    tf.summary.image("Generated coarse_"+str(j), tf.expand_dims((coarse[j,:,:,:]+1)/2,axis=0), step=epoch)
+                    tf.summary.image("Generated refined_"+str(j), tf.expand_dims((fine[j,:,:,:]+1)/2,axis=0), step=epoch)    
         return
