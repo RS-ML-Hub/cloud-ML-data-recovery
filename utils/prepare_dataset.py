@@ -104,10 +104,10 @@ def open_olci(path):
 
 def prepare_dataset(sen3_path_str='/home/shared/Data/OLCI/GoM/' , cloud_path_str='/home/shared/Data/cloud_masks/', direction="./data/", low_bound=0, high_bound=25, num_samples=100, num_clouds=100, type_mask="scatter"):
     sen3_path = os.path.join(sen3_path_str)
-    clouds_path = os.path.join(cloud_path_str)
-    filter_masks_by_percentage(clouds_path, low_bound, high_bound, num_clouds)
+    #clouds_path = os.path.join(cloud_path_str)
+    #filter_masks_by_percentage(clouds_path, low_bound, high_bound, num_clouds)
     #clouds = fetch_cloud_masks(clouds_path, clouds_list)
-    print("Cloud masks loaded")
+    #print("Cloud masks loaded")
     sen3_list = list_sen3(sen3_path)
     sen3_list_reduced = random.sample(sen3_list, num_samples)
     print("SEN3 files selected")
@@ -117,3 +117,10 @@ def prepare_dataset(sen3_path_str='/home/shared/Data/OLCI/GoM/' , cloud_path_str
     #dsc = mask_images(ds, clouds,freq_files)
     #print("Images masked")
     return ds
+
+def main():
+    filter_masks_by_percentage("/home/shared/Data/cloud_masks/", low_bound=15, high_bound=25, num_clouds=1000, type_mask="scatter")
+
+
+if __name__ == "__main__":
+    main()
