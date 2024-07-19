@@ -36,7 +36,7 @@ class LocalDiscriminator(keras.Model):
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
-            SNConv(8*cnum, 4, 2),
+            SNConv(8*cnum, 4, 1),
             keras.layers.Flatten(),
         ])
 
@@ -64,7 +64,7 @@ class GlobalDiscriminator(keras.Model):
 
 
 class MultiDiscriminator(keras.Model):
-    def __init__(self, crop_size=128):
+    def __init__(self, crop_size=64):
         super().__init__()
         self.input_shape = (2048)
         self.crop_size = crop_size

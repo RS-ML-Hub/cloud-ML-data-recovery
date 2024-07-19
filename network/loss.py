@@ -5,7 +5,7 @@ def DiscriminatorLoss(pos,neg):
     return tf.reduce_mean(tf.nn.relu(1-pos)) + tf.reduce_mean(tf.nn.relu(1+neg))
 
 def GeneratorLoss(neg):
-    return -tf.reduce_mean(neg)
+    return -0.005*tf.reduce_mean(neg)
 
 
 def reconstructLoss(y_true, coarse, refined, mask):
@@ -19,7 +19,7 @@ def reconstructLoss(y_true, coarse, refined, mask):
     refine1 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(tf.expand_dims(mask[:,:,:],axis=-1))/(mvmr))
     refine2 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(1- tf.expand_dims(mask[:,:,:],axis=-1))/(1-mvmr))
     chan_loss = coarse1+coarse2+refine1+refine2
-    return chan_loss
+    return 1.2*chan_loss
 
 
 def gram_matrix(x):
@@ -33,7 +33,7 @@ def StyleLoss(feats_img, feats_refined_img):
         gram_img = gram_matrix(feats_img[i])
         gram_refined_img = gram_matrix(feats_refined_img[i])
         style_loss += (tf.reduce_mean(tf.abs(gram_img - gram_refined_img)))/tf.cast(tf.shape(feats_img[i])[2]*tf.shape(feats_img[i])[3], tf.float32)
-    return style_loss
+    return 120*style_loss/11
 
 def PerceptualLoss(feats_img, feats_refined_img):
 
@@ -41,4 +41,4 @@ def PerceptualLoss(feats_img, feats_refined_img):
     #Calculate perceptual loss
     for i in range(len(feats_img)):
         percloss += tf.reduce_mean(tf.abs(feats_img[i] - feats_refined_img[i]))
-    return percloss
+    return 5*percloss/11
