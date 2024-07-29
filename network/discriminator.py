@@ -1,6 +1,7 @@
 import tensorflow as tf
 import keras
 from network.layers import SNConv, Attention_Layer
+import numpy as np
 
 def crop(x, crop_size):
     return 
@@ -28,7 +29,7 @@ class SelfAttentionDiscriminator(keras.Model):
 class LocalDiscriminator(keras.Model):
     def __init__(self, crop_size=64, band_num=11):
         super().__init__()
-        cnum = 32
+        cnum = 64
         self.localD= keras.Sequential([
             keras.layers.InputLayer(input_shape=(crop_size,crop_size,band_num+1)),
             SNConv(2*cnum, 4, 2),
@@ -36,17 +37,17 @@ class LocalDiscriminator(keras.Model):
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
-            SNConv(8*cnum, 4, 1),
-            keras.layers.Flatten(),
+            SNConv(8*cnum, 4, 2),
         ])
 
     def call(self,x):
-        return self.localD(x)
+        x_view = self.localD(x)
+        return tf.reshape(x_view,[tf.shape(x)[0],-1])
         
 class GlobalDiscriminator(keras.Model):
     def __init__(self):
         super().__init__()
-        cnum = 32
+        cnum = 64
         self.globalD = keras.Sequential([
             SNConv(2*cnum, 4, 2),
             SNConv(4*cnum, 4, 2),
@@ -55,16 +56,16 @@ class GlobalDiscriminator(keras.Model):
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
-            keras.layers.Flatten(),
+            
         ])
 
     def call(self,x):
-        return self.globalD(x)
-        #reshape to 1D
+        x_view = self.globalD(x)
+        return tf.reshape(x_view,[tf.shape(x)[0],-1])
 
 
 class MultiDiscriminator(keras.Model):
-    def __init__(self, crop_size=64):
+    def __init__(self, crop_size=128):
         super().__init__()
         self.input_shape = (2048)
         self.crop_size = crop_size
@@ -72,15 +73,17 @@ class MultiDiscriminator(keras.Model):
         self.localD = LocalDiscriminator(crop_size=crop_size)
         self.globalD = GlobalDiscriminator()
         self.act = keras.activations.sigmoid
-        self.lin2 = keras.layers.Dense(1024)
-        self.lin3 = keras.layers.Dense(1024)
+        self.lin1 = keras.layers.Dense(1, activation=None, kernel_initializer=keras.initializers.RandomUniform(minval=-np.sqrt(1/2048),maxval=np.sqrt(1/2048)),bias_initializer=keras.initializers.RandomUniform(minval=-np.sqrt(1/2048),maxval=np.sqrt(1/2048)))
+        #self.lin2 = keras.layers.Dense(1, activation=None)
+        #self.lin3 = keras.layers.Dense(1, activation=None)
 
 
     def call(self, x):
-        cropped_x = tf.image.random_crop(x, size=[tf.shape(x)[0],self.crop_size, self.crop_size, tf.shape(x)[3]], seed=42)
+        cropped_x = tf.image.random_crop(x, size=[tf.shape(x)[0],self.crop_size, self.crop_size, tf.shape(x)[3]], seed=4862)
         local_out = self.localD(cropped_x)
         global_out = self.globalD(x)
-        out = self.act(self.lin2(local_out)) + self.act(self.lin3(global_out))
-        return self.act(out)
+        out = self.lin1(tf.concat([local_out,global_out], axis=-1))
+        #out = self.act(self.lin2(local_out)) + self.act(self.lin3(global_out))
+        return out
         
 #Not sure if MultiDiscriminator is the right way to tackle actual clouds as they are likely "free-form-like" masks
