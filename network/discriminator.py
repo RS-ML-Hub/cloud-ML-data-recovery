@@ -3,9 +3,15 @@ import keras
 from network.layers import SNConv, Attention_Layer
 import numpy as np
 
-def crop(x, crop_size):
-    return 
+def random_crop(image, crop_height, crop_width):
+    """Randomly crops an image to the specified height and width."""
+    batch_size, img_height, img_width, channels = image.shape[0],image.shape[1],image.shape[2],image.shape[3]
+    
+    crop_y = np.random.randint(0, img_height - crop_height -1)
+    crop_x = np.random.randint(0, img_width - crop_width -1)
 
+    return image[:, crop_y:crop_y + crop_height, crop_x:crop_x + crop_width, :]
+    
 class SelfAttentionDiscriminator(keras.Model):
     def __init__(self, band_num=11, cn_num=32):
         super().__init__()
@@ -29,7 +35,7 @@ class SelfAttentionDiscriminator(keras.Model):
 class LocalDiscriminator(keras.Model):
     def __init__(self, crop_size=64, band_num=11):
         super().__init__()
-        cnum = 64
+        cnum = 16
         self.localD= keras.Sequential([
             keras.layers.InputLayer(input_shape=(crop_size,crop_size,band_num+1)),
             SNConv(2*cnum, 4, 2),
@@ -47,7 +53,7 @@ class LocalDiscriminator(keras.Model):
 class GlobalDiscriminator(keras.Model):
     def __init__(self):
         super().__init__()
-        cnum = 64
+        cnum = 16
         self.globalD = keras.Sequential([
             SNConv(2*cnum, 4, 2),
             SNConv(4*cnum, 4, 2),
@@ -67,23 +73,24 @@ class GlobalDiscriminator(keras.Model):
 class MultiDiscriminator(keras.Model):
     def __init__(self, crop_size=128):
         super().__init__()
-        self.input_shape = (2048)
+
         self.crop_size = crop_size
         
         self.localD = LocalDiscriminator(crop_size=crop_size)
         self.globalD = GlobalDiscriminator()
-        self.act = keras.activations.sigmoid
+        self.act = keras.activations.tanh
         self.lin1 = keras.layers.Dense(1, activation=None, kernel_initializer=keras.initializers.RandomUniform(minval=-np.sqrt(1/2048),maxval=np.sqrt(1/2048)),bias_initializer=keras.initializers.RandomUniform(minval=-np.sqrt(1/2048),maxval=np.sqrt(1/2048)))
         #self.lin2 = keras.layers.Dense(1, activation=None)
         #self.lin3 = keras.layers.Dense(1, activation=None)
 
 
     def call(self, x):
-        cropped_x = tf.image.random_crop(x, size=[tf.shape(x)[0],self.crop_size, self.crop_size, tf.shape(x)[3]], seed=4862)
+        cropped_x = random_crop(x, self.crop_size, self.crop_size)
+        #cropped_x = tf.image.random_crop(x, size=[tf.shape(x)[0],self.crop_size, self.crop_size, tf.shape(x)[3]], seed=4862)
         local_out = self.localD(cropped_x)
         global_out = self.globalD(x)
         out = self.lin1(tf.concat([local_out,global_out], axis=-1))
         #out = self.act(self.lin2(local_out)) + self.act(self.lin3(global_out))
-        return out
+        return self.act(out)
         
 #Not sure if MultiDiscriminator is the right way to tackle actual clouds as they are likely "free-form-like" masks

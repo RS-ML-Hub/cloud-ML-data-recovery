@@ -1,5 +1,7 @@
 import tensorflow as tf
 import keras
+from keras.src.layers.input_spec import InputSpec
+from keras.src.layers import Wrapper
 
 # Implementation of the GatedConv2D and GatedDeConv2D classes as per both 
 # https://github.com/Oliiveralien/Inpainting-on-RSI/ and https://github.com/JiahuiYu/generative_inpainting/
@@ -27,12 +29,12 @@ class GatedConv2D(keras.Model):
 class GatedDeConv2D(keras.Model):
     def __init__(self, scale, cn_out, ker_size, stride, dilation=1, trainable=True, dtype=tf.float32):
         super(GatedDeConv2D, self).__init__()
-        self.upsample = keras.layers.UpSampling2D(size=(scale, scale), interpolation='bilinear')
+        self.upsample = keras.layers.UpSampling2D(size=(scale, scale), interpolation='nearest')
         self.bn = keras.layers.BatchNormalization()
         self.act = keras.layers.LeakyReLU(alpha=0.2)
         self.conv = keras.layers.Conv2D(filters=cn_out, strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation, kernel_initializer='he_normal')
         self.gate = keras.layers.Conv2D(filters=cn_out, strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation, kernel_initializer='he_normal')
-        self.sigmoid = keras.layers.Activation('sigmoid')   
+        self.sigmoid = keras.activations.sigmoid
     
     def call(self, input):
         x = self.upsample(input)
@@ -85,3 +87,43 @@ class Attention_Layer(keras.Model):
         out = tf.reshape(out,(batch_size, h, w, int(self.c)))
         return self.gamma*out + x
 
+class Spectral_Regularization(Wrapper):
+    def __init__(self, layer):
+        super(Spectral_Regularization,self).__init__(layer)
+        self.layer = layer
+
+    def build(self, input_shape):
+        super().build(input_shape)
+        self.input_spec = InputSpec(shape=[None] + list(input_shape[1:]))
+
+        self.kernel = self.layer.kernel
+        self.kernel_shape = self.kernel.shape
+        self.vector_U = self.add_weight(name="vector_u", shape=(1, self.kernel_shape[-1]), initializer=keras.initializers.TruncatedNormal(stddev=0.02), trainable=False, dtype=self.kernel.dtype)
+    
+    def call(self, inputs, training=False):
+        if training:
+            new_u, new_w = self.regularized_weights()
+            self.vector_U.assign(new_u)
+            self.kernel.assign(new_w)
+
+        return self.layer(inputs)
+        
+
+    
+    def compute_output_shape(self, input_shape):
+        return self.layer.compute_output_shape(input_shape)
+    
+    def regularized_weights(self):
+        w = tf.reshape(self.kernel, [-1, self.kernel_shape[-1]])
+        w_shape = self.kernel_shape
+        u = self.vector_U.value
+        v = tf.nn.l2_normalize(tf.matmul(u, w, transpose_b=True))
+        u = tf.nn.l2_normalize(tf.matmul(v, w))
+        sigma = tf.matmul(tf.matmul(v, w), u, transpose_b=True)
+
+        #Delta D is sigma minus the identity matrix times the first singular value 
+        delta_d = sigma - tf.eye(w_shape[-1])*sigma[0,:]
+        delta_w = tf.matmul(tf.matmul(u, delta_d), v, transpose_b=True)
+        new_w = (w + delta_w)/sigma
+        kernel = tf.reshape(new_w, w_shape)
+        return u, kernel
