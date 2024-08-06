@@ -173,3 +173,7 @@ models/
 *.pkl
 vggcompare.*
 *.jpg
+dog*.jpg
+vgg*.pkl
+vgg*.ipynb
+vgg*.py
