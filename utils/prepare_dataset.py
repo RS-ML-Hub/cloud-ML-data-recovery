@@ -1,9 +1,11 @@
 import os
 import numpy as np
 import xarray as xr
+import shutil
+import pandas
 import random
 
-def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25, num_clouds=100):
+def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25, num_clouds=100, type_mask="scatter", direction="/home/etienne/cloud-ML-data-recovery/data/masks/"):
     """
         This function filters cloud masks by the percentage of cloud cover.
         It returns a list of files that are within the boundaries.
@@ -17,16 +19,23 @@ def filter_masks_by_percentage(clouds_path, low_bound=0, high_bound=25, num_clou
             files: a list of files that are within the boundaries
     """
     files = os.listdir(clouds_path)
+    cloud_df = pandas.read_csv("/home/shared/Data/cloud_masks_meta.csv")
     print("There are {} cloud masks in the directory".format(len(files)))
-    #Get all numpy files
-    files = [f for f in files if f.endswith('.npy')]
-    #Map files where the percent is above the lower bound
-    files = [f for f in files if int(f.split('PERCENT')[1].split('.')[0]) >= low_bound]
-    #Map files where the percent is below the upper bound
-    files = [f for f in files if int(f.split('PERCENT')[1].split('.')[0]) <= high_bound]
-    #Both operations could be condensed into one line but for readability they are separated
-    print("There are {} cloud masks between {} and {} percent of coverage".format(len(files), low_bound, high_bound))
-    return random.sample(files, num_clouds)
+    filtered_clouds = cloud_df[(cloud_df["cloud_class"] == type_mask)]
+    percentage = filtered_clouds.apply(lambda x: 100*x["missing_pixels"]/(256*256), axis=1)
+    filtered_clouds = filtered_clouds[(percentage >= low_bound) & (percentage <= high_bound)]
+
+    samples = filtered_clouds.sample(num_clouds)["filename"].values
+
+    #copy file from each samples into new dir
+
+    for sample in samples:
+        source_path = os.path.join(clouds_path, sample)
+        destination_path = os.path.join(direction, sample)
+    
+        if os.path.exists(source_path):
+            shutil.copy(source_path, destination_path)
+    return
 
 def fetch_cloud_masks(clouds_path, file_list):
     """
@@ -93,18 +102,25 @@ def open_olci(path):
         arr.append(x)
     return xr.merge(arr)
 
-def prepare_dataset(sen3_path_str='/home/shared/Data/OLCI/GoM/' , cloud_path_str='/home/shared/Data/cloud_masks/', low_bound=0, high_bound=25, num_samples=100, num_clouds=100):
+def prepare_dataset(sen3_path_str='/home/shared/Data/OLCI/GoM/' , cloud_path_str='/home/shared/Data/cloud_masks/', direction="./data/", low_bound=0, high_bound=25, num_samples=100, num_clouds=100, type_mask="scatter"):
     sen3_path = os.path.join(sen3_path_str)
-    clouds_path = os.path.join(cloud_path_str)
-    clouds_list = filter_masks_by_percentage(clouds_path, low_bound, high_bound, num_clouds)
-    clouds = fetch_cloud_masks(clouds_path, clouds_list)
-    print("Cloud masks loaded")
+    #clouds_path = os.path.join(cloud_path_str)
+    #filter_masks_by_percentage(clouds_path, low_bound, high_bound, num_clouds)
+    #clouds = fetch_cloud_masks(clouds_path, clouds_list)
+    #print("Cloud masks loaded")
     sen3_list = list_sen3(sen3_path)
     sen3_list_reduced = random.sample(sen3_list, num_samples)
     print("SEN3 files selected")
     ds = fetch_sen3(sen3_list_reduced)
-    print("SEN3 files loaded")
-    print("Masking images...")
-    dsc = mask_images(ds, clouds)
-    print("Images masked")
-    return ds,dsc
+    #print("SEN3 files loaded")
+    #print("Masking images...")
+    #dsc = mask_images(ds, clouds,freq_files)
+    #print("Images masked")
+    return ds
+
+def main():
+    filter_masks_by_percentage("/home/shared/Data/cloud_masks/", low_bound=15, high_bound=25, num_clouds=1000, type_mask="scatter")
+
+
+if __name__ == "__main__":
+    main()

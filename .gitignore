@@ -169,3 +169,7 @@ nohup.out
 logs/
 tuner/
 features*.png
+models/
+*.pkl
+vggcompare.*
+*.jpg

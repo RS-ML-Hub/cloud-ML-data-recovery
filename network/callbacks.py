@@ -31,24 +31,43 @@ class OutputImageToTensorBoard(keras.callbacks.Callback):
         super().__init__()
         self.frequency = epochs
         self.n_images=n_images
-        for images,_ in test_ds.take(1):
+        for masks,images in test_ds.take(1):
             indices = np.random.choice(images.shape[0], n_images, replace=False)
-            self.sample_images = images.numpy()[indices]
+            self.masks = masks.numpy()[indices]
+            self.images = images.numpy()[indices]
         self.sagan = sagan
         self.file_writer = tf.summary.create_file_writer(log_dir)
 
     def on_epoch_end(self, epoch, logs=None):
         if epoch % self.frequency == 0:
-            bands = [3,5,9]
+
+            x = self.images*(1-self.masks)+self.masks
+            x = np.concatenate((x,self.masks), axis=-1)
             with self.file_writer.as_default():
-                coarse, fine = self.sagan(self.sample_images, training=False)
+                coarse, fine = self.sagan(x, training=False)
                 coarse = tf.cast(coarse, tf.float64)
+                coarse = coarse*self.masks + (1-self.masks)*self.images
                 fine = tf.cast(fine, tf.float64)
-                fine = fine*tf.expand_dims(self.sample_images[:,:,:,-1],axis=-1) + (1-tf.expand_dims(self.sample_images[:,:,:,-1],axis=-1))*self.sample_images[:,:,:,:-1]
-                #shape of coarse
-                coarse = np.stack([coarse[:,:,:,i] for i in bands], axis=-1)
-                fine = np.stack([fine[:,:,:,i] for i in bands], axis=-1)
+                fine = fine*self.masks + (1-self.masks)*self.images
                 for j in range(self.n_images):
-                    tf.summary.image("Generated coarse_"+str(j), tf.expand_dims(coarse[j,:,:,:],axis=0), step=epoch)
-                    tf.summary.image("Generated refined_"+str(j), tf.expand_dims(fine[j,:,:,:],axis=0), step=epoch)    
+                    tf.summary.image("Generated coarse_"+str(j), (coarse[j:j+1,:,:,3:4]+1)/2, step=epoch)
+                    tf.summary.image("Generated refined_"+str(j), (fine[j:j+1,:,:,3:4]+1)/2, step=epoch)    
         return
+
+class ShiftGPCenterAfterX(keras.callbacks.Callback):
+  def __init__(self, sagan, target, trigger1=None, trigger2 = 15 ):
+      super().__init__()
+      self.sagan = sagan
+      self.target = target
+      self.trigger1 = trigger1
+      self.trigger2 = trigger2
+
+  def on_epoch_end(self, epoch, logs=None):
+
+      if epoch == self.trigger1:
+        self.sagan.gam_reg = 25
+        self.sagan.gp_center = self.sagan.gp_center // 2
+
+      if epoch == self.trigger2:
+        self.sagan.gam_reg = 10
+        self.sagan.gp_center = self.target
