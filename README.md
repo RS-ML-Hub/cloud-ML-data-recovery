@@ -3,7 +3,7 @@
 This repository contains the code written during an internship at Kyoto University of Advanced Science
 
 ## Technical Specificity
-This code was built on Tensorflow version 2.16.1 and the Keras API 3.3
+This code was built on Tensorflow version 2.16.1 and the Keras API 3.3.3
 
 ## Architecture
 
