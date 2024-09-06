@@ -41,17 +41,19 @@ class OutputImageToTensorBoard(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         if epoch % self.frequency == 0:
 
-            x = self.images*(1-self.masks)+self.masks
+            x = self.images*(1-self.masks)
             x = np.concatenate((x,self.masks), axis=-1)
             with self.file_writer.as_default():
                 coarse, fine = self.sagan(x, training=False)
                 coarse = tf.cast(coarse, tf.float64)
-                coarse = coarse*self.masks + (1-self.masks)*self.images
                 fine = tf.cast(fine, tf.float64)
-                fine = fine*self.masks + (1-self.masks)*self.images
+                
+                complete = fine*self.masks + (1-self.masks)*self.images
                 for j in range(self.n_images):
                     tf.summary.image("Generated coarse_"+str(j), (coarse[j:j+1,:,:,3:4]+1)/2, step=epoch)
                     tf.summary.image("Generated refined_"+str(j), (fine[j:j+1,:,:,3:4]+1)/2, step=epoch)    
+                    tf.summary.image("Generated complete_"+str(j), (complete[j:j+1,:,:,3:4]+1)/2, step=epoch)    
+                    
         return
 
 class ShiftGPCenterAfterX(keras.callbacks.Callback):

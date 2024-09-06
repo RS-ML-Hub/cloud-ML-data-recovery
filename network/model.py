@@ -28,6 +28,18 @@ class VGG_Feature_Extractor(keras.Model):
 """
 
 
+def normalize_with_mask(tensor, mask):
+    # Masked min and max calculation
+    masked_tensor = tf.where(mask == 0, tensor, tf.fill(tf.shape(tensor), tf.float64.max))
+    min_val = tf.reduce_min(masked_tensor, axis=(1,2), keepdims=True)
+    
+    masked_tensor = tf.where(mask == 0, tensor, tf.fill(tf.shape(tensor), tf.float64.min))
+    max_val = tf.reduce_max(masked_tensor, axis=(1,2), keepdims=True)
+    
+    # Normalize the entire tensor
+    normalized = (tensor - min_val) / (max_val - min_val)
+    return normalized
+
 
 class GenModel(keras.Model):
     def __init__(self, cn_num=32, band_num=11, dropout=False):
@@ -59,7 +71,7 @@ class GenModel(keras.Model):
             ])
 
         self.refineNet = keras.Sequential([
-            keras.Input(shape=(256, 256, band_num+1)),
+            keras.Input(shape=(256*2, 256*2, band_num+1)),
             GatedConv2D(cn_num, 5, 1),
             #Downsample to 128*128*64
             GatedConv2D(cn_num, 4, 2),
@@ -78,12 +90,12 @@ class GenModel(keras.Model):
         ])
 
         self.refineNet_Attention = keras.Sequential([
-            keras.Input(shape=(64,64,4*cn_num)),
+            keras.Input(shape=(64*2,64*2,4*cn_num)),
             Attention_Layer(4*cn_num),
         ])
 
         self.refineNetUpSample = keras.Sequential([
-            keras.Input(shape=(64,64,4*cn_num)),
+            keras.Input(shape=(64*2,64*2,4*cn_num)),
             
             GatedConv2D(4*cn_num, 3, 1),
             GatedConv2D(4*cn_num, 3, 1),
@@ -97,23 +109,33 @@ class GenModel(keras.Model):
         ])
 
     def call(self, x):
+        upsample = keras.layers.UpSampling2D(size=(2,2), interpolation='nearest')
+
         coarse = self.coarseNet(x)
-        coarse = tf.clip_by_value(coarse, -1, 1)
-        mask = tf.expand_dims(x[:,:,:,-1], axis=-1)
-        complete_coarse = coarse*mask + x[:,:,:,:-1]*(1-mask)
-        coarse_out = tf.concat([complete_coarse, tf.expand_dims(x[:,:,:,-1], axis=-1)], axis=-1)
-        refine_downsample = self.refineNet(coarse_out)
-        refine_attention = self.refineNet_Attention(refine_downsample)
-        refine_upsample = self.refineNetUpSample(refine_attention)
         batch = tf.shape(coarse)[0]
         h = tf.shape(coarse)[1]
         w = tf.shape(coarse)[2]
-        refine_upsample_out = tf.zeros((batch,h,w,0))
-        for i in range(11):
-          refine_upsample_temp = (refine_upsample[:,:,:,i:i+1] - tf.reduce_mean(refine_upsample[:,:,:,i:i+1],axis=0, keepdims=True))/(2*tf.math.reduce_std(refine_upsample[:,:,:,i:i+1],axis=0, keepdims=True))
+        
+        """coarse_1 = tf.zeros((batch,h,w,0),dtype = tf.float32)
+        for j in range(11):
+          coarse_temp = ((coarse[:,:,:,j:j+1] - tf.reduce_mean(coarse[:,:,:,j:j+1],axis=(1,2), keepdims=True))*(tf.math.reduce_std(x[:,:,:,j:j+1],axis=(1,2),keepdims=True))/(tf.math.reduce_std(coarse[:,:,:,j:j+1],axis=(1,2), keepdims=True)+1e-4)) + tf.reduce_mean(x[:,:,:,j:j+1],axis=(1,2), keepdims=True)
+          coarse_1 = tf.concat([coarse_1, coarse_temp], axis=-1)
+        """
+        mask = tf.expand_dims(x[:,:,:,-1], axis=-1)
+
+        complete_coarse = coarse*mask + x[:,:,:,:-1]*(1-mask)
+        coarse_out = tf.concat([complete_coarse, tf.expand_dims(x[:,:,:,-1], axis=-1)], axis=-1)
+        coarse_out_up = upsample(coarse_out)
+        refine_downsample = self.refineNet(coarse_out_up)
+        refine_attention = self.refineNet_Attention(refine_downsample)
+        refine_upsample = self.refineNetUpSample(refine_attention)
+        refine_upsample_out = tf.zeros((batch,h*2,w*2,0), dtype=tf.float32)
+        for j in range(11):
+          refine_upsample_temp = ((refine_upsample[:,:,:,j:j+1] - tf.reduce_mean(refine_upsample[:,:,:,j:j+1],axis=(1,2), keepdims=True))*(tf.math.reduce_std(upsample(x[:,:,:,j:j+1]),axis=(1,2),keepdims=True))/(tf.math.reduce_std(refine_upsample[:,:,:,j:j+1],axis=(1,2), keepdims=True)+1e-4)) + tf.reduce_mean(upsample(x[:,:,:,j:j+1]),axis=(1,2), keepdims=True)
+          #refine_upsample_temp = normalize_with_mask(tf.cast(refine_upsample[:,:,:,j:j+1],tf.float64),upsample(mask))
           refine_upsample_out = tf.concat([refine_upsample_out, refine_upsample_temp],axis=-1)
-        refine_upsample = tf.clip_by_value(refine_upsample_out, -1, 1)
-        return coarse, refine_upsample
+        
+        return coarse, refine_upsample_out
 
     """ 
     def train_step(self, data):
@@ -181,6 +203,9 @@ class SAGAN(keras.Model):
         self.extractor = self.vgg.extractor
         self.gp_center=1
         self.gam_reg=2
+        self.us = keras.layers.UpSampling2D(size=(2,2), interpolation='nearest', dtype=tf.float64)
+        self.ds = keras.layers.MaxPooling2D((2,2), strides=(2,2),padding="valid")
+
 
     def compile(self,strategy, gen_optimizer, dis_optimizer):
         super().compile()
@@ -194,17 +219,23 @@ class SAGAN(keras.Model):
     
     def train_step(self, data):
         masks, y = data
-        y = tf.cast(y, tf.float64)
-        masks= tf.cast(masks, tf.float64)
         batch = tf.shape(y)[0]
         h = tf.shape(y)[1]
         w = tf.shape(y)[2]
-
+        y = tf.cast(y, tf.float64)
+        masks= tf.cast(masks, tf.float64)
+        y_temp = tf.zeros((batch,h,w,0),dtype=tf.float64)
+        for i in range(11):
+          y_tt = normalize_with_mask(y[:,:,:,i:i+1], masks[:,:,:,0:1])
+          y_temp = tf.concat([y_temp, y_tt], axis=-1)
+        y = y_temp
+        del y_temp, y_tt
         x = tf.zeros(shape=(batch,h,w,0), dtype=tf.float64)
         for i in range(11):
-          x = tf.concat([x,tf.expand_dims(y[:,:,:,i] * (1 - masks[:,:,:,0]) + masks[:,:,:,0], axis=-1)], axis=-1)
+          x = tf.concat([x,tf.expand_dims(y[:,:,:,i] * (1 - masks[:,:,:,0]), axis=-1)], axis=-1)
         x = tf.concat([x, masks], axis=-1)
-
+        y = self.us(y)
+        masks = self.us(masks)
         with tf.GradientTape() as dis_tape:
           coarse, refined = self.generator(x, training=False)
           coarse = tf.cast(coarse, tf.float64)
@@ -245,11 +276,14 @@ class SAGAN(keras.Model):
             style_loss = tf.constant(0.0, dtype=tf.float64)
             perceptual_loss = tf.constant(0.0, dtype=tf.float64)
             for i in range(11):
-                y_norm = (y[:,:,:,i] - tf.reduce_min(y[:,:,:,i],axis=0))/((tf.reduce_max(y[:,:,:,i],axis=0)-tf.reduce_min(y[:,:,:,i],axis=0))+1e-6)
+                #y_norm = (y[:,:,:,i] - tf.reduce_min(y[:,:,:,i],axis=0))/((tf.reduce_max(y[:,:,:,i],axis=0)-tf.reduce_min(y[:,:,:,i],axis=0))+1e-6)
+                y_norm = normalize_with_mask(y[:,:,:,i],masks[:,:,:,0])
                 feats_img = self.extractor(tf.image.grayscale_to_rgb(tf.image.resize(tf.expand_dims(y_norm,axis=-1),(224,224))))
-                refined_norm = (refined[:,:,:,i] - tf.reduce_min(refined[:,:,:,i],axis=0))/((tf.reduce_max(refined[:,:,:,i],axis=0)-tf.reduce_min(refined[:,:,:,i],axis=0))+1e-6)
+                #refined_norm = (refined[:,:,:,i] - tf.reduce_min(refined[:,:,:,i],axis=0))/((tf.reduce_max(refined[:,:,:,i],axis=0)-tf.reduce_min(refined[:,:,:,i],axis=0))+1e-6)
+                refined_norm = normalize_with_mask(refined[:,:,:,i],masks[:,:,:,0])
                 feats_refined_img = self.extractor(tf.image.grayscale_to_rgb(tf.image.resize(tf.expand_dims(refined_norm,axis=-1),(224,224))))
-                complete_norm = (complete[:,:,:,i] - tf.reduce_min(complete[:,:,:,i], axis=0))/((tf.reduce_max(complete[:,:,:,i],axis=0)-tf.reduce_min(complete[:,:,:,i],axis=0))+1e-6)
+                #complete_norm = (complete[:,:,:,i] - tf.reduce_min(complete[:,:,:,i], axis=0))/((tf.reduce_max(complete[:,:,:,i],axis=0)-tf.reduce_min(complete[:,:,:,i],axis=0))+1e-6)
+                complete_norm = normalize_with_mask(complete[:,:,:,i],masks[:,:,:,0])
                 feats_complete_img = self.extractor(tf.image.grayscale_to_rgb(tf.image.resize(tf.expand_dims(complete_norm,axis=-1),(224,224))))
                 style_loss = tf.math.add(style_loss,tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64)))
                 perceptual_loss = tf.math.add(perceptual_loss, tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64)))            
@@ -271,17 +305,24 @@ class SAGAN(keras.Model):
     
     def test_step(self, data):
         masks, y = data
-        masks= tf.cast(masks, tf.float64)
-        y = tf.cast(y, tf.float64)
         batch = tf.shape(y)[0]
         h = tf.shape(y)[1]
         w = tf.shape(y)[2]
-
+        y = tf.cast(y, tf.float64)
+        masks= tf.cast(masks, tf.float64)
+        y_temp = tf.zeros((batch,h,w,0),dtype=tf.float64)
+        for i in range(11):
+          y_tt = normalize_with_mask(y[:,:,:,i:i+1], masks[:,:,:,0:1])
+          y_temp = tf.concat([y_temp, y_tt], axis=-1)
+        y = y_temp
+        del y_temp, y_tt
         x = tf.zeros(shape=(batch,h,w,0), dtype=tf.float64)
         for i in range(11):
-          x = tf.concat([x,tf.expand_dims(y[:,:,:,i] * (1 - masks[:,:,:,0]) + masks[:,:,:,0], axis=-1)], axis=-1)
+          x = tf.concat([x,tf.expand_dims(y[:,:,:,i] * (1 - masks[:,:,:,0]), axis=-1)], axis=-1)
 
         x = tf.concat([x, masks], axis=-1)
+        masks = self.us(masks)
+        y = self.us(y)
         coarse, refined = self.generator(x, training=False)
         coarse = tf.cast(coarse, tf.float64)
         refined = tf.cast(refined, tf.float64)
@@ -317,18 +358,20 @@ class SAGAN(keras.Model):
         style_loss =tf.constant(0.0, dtype=tf.float64)
         perceptual_loss = tf.constant(0.0, dtype=tf.float64)
         for i in range(11):                
-          y_norm = (y[:,:,:,i] - tf.reduce_min(y[:,:,:,i],axis=0))/((tf.reduce_max(y[:,:,:,i],axis=0)-tf.reduce_min(y[:,:,:,i],axis=0))+1e-6)
+          #y_norm = (y[:,:,:,i] - tf.reduce_min(y[:,:,:,i],axis=0))/((tf.reduce_max(y[:,:,:,i],axis=0)-tf.reduce_min(y[:,:,:,i],axis=0))+1e-6)
+          y_norm = normalize_with_mask(y[:,:,:,i],masks[:,:,:,0])
           feats_img = self.extractor(tf.image.grayscale_to_rgb(tf.image.resize(tf.expand_dims(y_norm,axis=-1),(224,224))))
-          refined_norm = (refined[:,:,:,i] - tf.reduce_min(refined[:,:,:,i],axis=0))/((tf.reduce_max(refined[:,:,:,i],axis=0)-tf.reduce_min(refined[:,:,:,i],axis=0))+1e-6)
+          #refined_norm = (refined[:,:,:,i] - tf.reduce_min(refined[:,:,:,i],axis=0))/((tf.reduce_max(refined[:,:,:,i],axis=0)-tf.reduce_min(refined[:,:,:,i],axis=0))+1e-6)
+          refined_norm = normalize_with_mask(refined[:,:,:,i],masks[:,:,:,0])
           feats_refined_img = self.extractor(tf.image.grayscale_to_rgb(tf.image.resize(tf.expand_dims(refined_norm,axis=-1),(224,224))))
-          complete_norm = (complete[:,:,:,i] - tf.reduce_min(complete[:,:,:,i], axis=0))/((tf.reduce_max(complete[:,:,:,i],axis=0)-tf.reduce_min(complete[:,:,:,i],axis=0))+1e-6)
+          #complete_norm = (complete[:,:,:,i] - tf.reduce_min(complete[:,:,:,i], axis=0))/((tf.reduce_max(complete[:,:,:,i],axis=0)-tf.reduce_min(complete[:,:,:,i],axis=0))+1e-6)
+          complete_norm = normalize_with_mask(complete[:,:,:,i],masks[:,:,:,0])
           feats_complete_img = self.extractor(tf.image.grayscale_to_rgb(tf.image.resize(tf.expand_dims(complete_norm,axis=-1),(224,224))))
           style_loss = tf.math.add(style_loss,tf.math.add(tf.cast(StyleLoss(feats_img, feats_refined_img), tf.float64), tf.cast(StyleLoss(feats_img, feats_complete_img), tf.float64)))
           perceptual_loss = tf.math.add(perceptual_loss, tf.math.add(tf.cast(PerceptualLoss(feats_img, feats_refined_img), tf.float64), tf.cast(PerceptualLoss(feats_img, feats_complete_img), tf.float64)))            
         total_loss = tf.math.add(reconstruct_loss, tf.math.add(tf.math.scalar_mul(0.001, tf.math.add(style_loss, perceptual_loss)), gen_loss))
         del refined
         del pred_neg
-
 
         # Store our own metrics
         self.loss_tracker.update_state(total_loss)
@@ -337,7 +380,7 @@ class SAGAN(keras.Model):
         self.perceptual_metric.update_state(perceptual_loss)
         self.gen_metric.update_state(gen_loss)
         self.dis_metric.update_state(dis_loss)
-        self.ssim_metric.update_state((y+1)/2, (complete+1)/2)
+        self.ssim_metric.update_state(y, complete, masks)
         return {m.name: m.result() for m in self.metrics}
 
     @property
@@ -350,4 +393,5 @@ class SAGAN(keras.Model):
         return [self.loss_tracker, self.reconstruct_metric, self.style_metric, self.perceptual_metric, self.gen_metric, self.dis_metric , self.ssim_metric]
 
     def call(self, x):
-        return self.generator(x, training=False)
+        coarse, refined = self.generator(x, training=False)
+        return coarse, self.ds(refined)

@@ -47,7 +47,7 @@ class SNConv(keras.Model):
         super(SNConv, self).__init__()
         self.ac = activation
         self.conv = keras.layers.Conv2D(filters=cn_out, strides=stride, kernel_size=ker_size, padding='same', activation=None, dilation_rate=dilation, kernel_initializer='he_normal')
-        self.SN = keras.layers.SpectralNormalization(self.conv)
+        self.SN = Spectral_Regularization(self.conv)
         self.activation = keras.layers.LeakyReLU(alpha=0.2)
 
     def call(self, input):
@@ -88,8 +88,8 @@ class Attention_Layer(keras.Model):
         return self.gamma*out + x
 
 class Spectral_Regularization(Wrapper):
-    def __init__(self, layer):
-        super(Spectral_Regularization,self).__init__(layer)
+    def __init__(self, layer, **kwargs):
+        super(Spectral_Regularization,self).__init__(layer, **kwargs)
         self.layer = layer
 
     def build(self, input_shape):

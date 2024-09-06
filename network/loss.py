@@ -8,16 +8,23 @@ def GeneratorLoss(neg):
     return -0.005*tf.reduce_mean(neg)
 
 def reconstructLoss(y_true, coarse, refined, mask):
+    ds = keras.layers.MaxPooling2D((2,2), strides=(2,2),padding="valid", dtype=tf.float64)
+    mask_us = mask
+    mask = ds(mask)    
     mask = mask[:,:,:,0]
+    mask_us = mask_us[:,:,:,0]
     chan_loss = 0
     mask_vectorized= tf.reshape(mask, [tf.shape(mask)[0],-1])
     mvm = tf.reduce_mean(mask_vectorized, axis=1)
     mvmr = tf.reshape(mvm, [-1,1,1,1])
-    coarse1 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - coarse[:,:,:,:])*(tf.expand_dims(mask[:,:,:],axis=-1))/(mvmr))
-    coarse2 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - coarse[:,:,:,:])*(1- tf.expand_dims(mask[:,:,:],axis=-1))/(1-mvmr))
-    refine1 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(tf.expand_dims(mask[:,:,:],axis=-1))/(mvmr))
-    refine2 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(1- tf.expand_dims(mask[:,:,:],axis=-1))/(1-mvmr))
-    chan_loss = 3*coarse1+coarse2+3*refine1+refine2
+    mask_vectorized_us= tf.reshape(mask_us, [tf.shape(mask_us)[0],-1])
+    mvm_us = tf.reduce_mean(mask_vectorized_us, axis=1)
+    mvmr_us = tf.reshape(mvm_us, [-1,1,1,1])
+    coarse1 = tf.reduce_mean(tf.abs(ds(y_true[:,:,:,:]) - coarse[:,:,:,:])*(tf.expand_dims(mask[:,:,:],axis=-1))/(mvmr))
+    coarse2 = tf.reduce_mean(tf.abs(ds(y_true[:,:,:,:]) - coarse[:,:,:,:])*(1- tf.expand_dims(mask[:,:,:],axis=-1))/(1-mvmr))
+    refine1 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(tf.expand_dims(mask_us[:,:,:],axis=-1))/(mvmr_us))
+    refine2 = tf.reduce_mean(tf.abs(y_true[:,:,:,:] - refined[:,:,:,:])*(1- tf.expand_dims(mask_us[:,:,:],axis=-1))/(1-mvmr_us))
+    chan_loss = 1.2*coarse1+1.2*coarse2+1.2*refine1+1.2*refine2
     return chan_loss
 
 

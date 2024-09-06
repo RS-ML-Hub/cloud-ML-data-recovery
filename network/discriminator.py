@@ -35,7 +35,7 @@ class SelfAttentionDiscriminator(keras.Model):
 class LocalDiscriminator(keras.Model):
     def __init__(self, crop_size=64, band_num=11):
         super().__init__()
-        cnum = 16
+        cnum = 4
         self.localD= keras.Sequential([
             keras.layers.InputLayer(input_shape=(crop_size,crop_size,band_num+1)),
             SNConv(2*cnum, 4, 2),
@@ -44,6 +44,7 @@ class LocalDiscriminator(keras.Model):
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
+            Attention_Layer(8*cnum,'relu'),
         ])
 
     def call(self,x):
@@ -53,7 +54,7 @@ class LocalDiscriminator(keras.Model):
 class GlobalDiscriminator(keras.Model):
     def __init__(self):
         super().__init__()
-        cnum = 16
+        cnum = 4
         self.globalD = keras.Sequential([
             SNConv(2*cnum, 4, 2),
             SNConv(4*cnum, 4, 2),
@@ -62,7 +63,7 @@ class GlobalDiscriminator(keras.Model):
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
             SNConv(8*cnum, 4, 2),
-            
+            Attention_Layer(8*cnum,'relu'),
         ])
 
     def call(self,x):
