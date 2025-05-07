@@ -2,12 +2,17 @@
 
 This repository contains the code written during an internship at Kyoto University of Advanced Science
 
+To anyone finding this repository and wanting to build upon this work, please be aware that balancing losses is tricky and should not be done randomly by tweaking the weights by hand.
+A curious reader can explore what happens when you increase the Kullback-Leibler Divergence in a Gaussian VAE (another type of generative models) for instance: image will come out blurry and reconstruction will be very poor.
+However, balancing the loss perfectly (notably by deriving the loss by hand, which is an easy task in a Gaussian VAE) leads to decent reconstruction and generation capacity !
+
 ## Technical Specificity
 This code was built on Tensorflow version 2.16.1 and the Keras API 3.3.3
 
 ## Architecture
 
-The architecture is based on the works of ...
+The architecture is based on the works of  [Context-based multiscale unified network for missing data reconstruction in remote sensing images from Shao et. al](https://ieeexplore.ieee.org/abstract/document/9198931).
+
 It consists of a General Adversial Network in two stages :
  - The first stage is an auto-encoder architecture using Gated Convolutions.
  - The second stage is a similar Encoder Decoder architecture using a Self Attention Layer in its deepest layer.
